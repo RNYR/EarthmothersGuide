@@ -102,12 +102,12 @@ def row(meta, prefix, eid, table_fields):
 def main():
     meta = load(sys.argv[1])
     data = {'quests': {}, 'npcs': {}, 'objects': {}}
-    qf = {1: 'name', 2: 'start', 3: 'end', 4: 'reqLevel', 5: 'level', 6: 'races', 7: 'classes',
+    qf = {1: 'name', 2: 'start', 3: 'end', 4: 'reqLevel', 5: 'level', 6: 'races', 7: 'classes', 9: 'trigger',
           8: 'objText', 10: 'objectives', 12: 'preGroup', 13: 'preSingle', 14: 'children',
           16: 'exclusive', 17: 'zone', 18: 'skill', 19: 'minRep', 20: 'maxRep', 22: 'next', 23: 'flags', 24: 'special',
           27: 'breadcrumbFor', 32: 'maxLevel', 33: 'availUntil', 36: 'disabledBy'}
     for qid in dec_ids(stored(meta, 'X-Quest-IDS')):
-        r = row(meta, 'Quest', qid, [2, 3, 8, 10, 12, 13, 14, 16, 18, 19, 20])
+        r = row(meta, 'Quest', qid, [2, 3, 8, 9, 10, 12, 13, 14, 16, 18, 19, 20])
         if r:
             data['quests'][qid] = {qf[k]: v for k, v in r.items() if k in qf}
     nf = {1: 'name', 4: 'minLevel', 5: 'maxLevel', 7: 'spawns', 9: 'zone', 13: 'friendly', 14: 'sub'}
@@ -122,9 +122,9 @@ def main():
             data['objects'][oid] = {of.get(k, k): v for k, v in r.items()}
     data['items'] = {}
     for iid in dec_ids(stored(meta, 'X-Item-IDS')):
-        r = row(meta, 'Item', iid, [2, 3])
+        r = row(meta, 'Item', iid, [2, 3, 5])
         if r:
-            data['items'][iid] = {'name': r.get(1), 'npcDrops': r.get(2), 'objectDrops': r.get(3)}
+            data['items'][iid] = {'name': r.get(1), 'npcDrops': r.get(2), 'objectDrops': r.get(3), 'startQuest': r.get(5)}
     with open(sys.argv[2], 'w') as f:
         json.dump(data, f, default=str)
     print({k: len(v) for k, v in data.items()})

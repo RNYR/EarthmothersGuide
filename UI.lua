@@ -127,11 +127,20 @@ local function extraLines(step)
       local lines = { c(COLORS.title, "Also carrying:") }
       local MAX = 8
       for i, e in ipairs(list) do
-        if i > MAX then lines[#lines + 1] = c(COLORS.dim, ("  +%d more"):format(#list - MAX)) break end
-        activeQuestLines(lines, e.step, e.id, false)
+        if i <= MAX then activeQuestLines(lines, e.step, e.id, false) end
       end
+      if #list > MAX then lines[#lines + 1] = c(COLORS.dim, ("  +%d more"):format(#list - MAX)) end
       parts[#parts + 1] = table.concat(lines, "\n")
     end
+  end
+  local look = ns.LookOutFor()
+  if #look > 0 then
+    local items = {}
+    for i, e in ipairs(look) do
+      if i > 4 then items[#items + 1] = ("+%d more"):format(#look - 4) break end
+      items[#items + 1] = e.item .. c(COLORS.dim, " (starts " .. e.name .. ")")
+    end
+    parts[#parts + 1] = c(COLORS.title, "Look out for: ") .. table.concat(items, ", ")
   end
   if #parts == 0 then return nil end
   return table.concat(parts, "\n")
@@ -218,6 +227,11 @@ local function render(step)
   local hint = nil
   if step.t == "bind" then hint = "Continues when your hearthstone is set here (or click the panel)."
   elseif ns.IsManual(step) then hint = "Click the panel to continue." end
+  -- falling behind: say so instead of sending you into quests that are too hard
+  local level = ns.PlayerLevel()
+  if step.q and step.ql and step.ql >= level + 3 and not step.cls then
+    hint = ("These quests are level %d and you are %d: group up, grind a little, or skip ahead with care."):format(step.ql, level)
+  end
   panel.hint:SetText(hint and c(COLORS.dim, hint) or "")
   panel.counter:SetText(("%d / %d"):format(step.index, #ns.steps))
 
@@ -412,6 +426,7 @@ local HELP = {
   "/emg check <questID> - what the guide sees for one quest",
   "/emg gray <0-10> - skip quests this many levels below you (0 = never)",
   "/emg way - set the arrow and map pin for this step again",
+  "/emg tracker on|off - show or hide Blizzard's quest tracker (hidden while the guide replaces it)",
   "/emg arrow on|off | waypoints on|off (map pin) | scale <0.6-1.6> | lock | unlock",
 }
 
@@ -442,6 +457,10 @@ SlashCmdList.EARTHMOTHERSGUIDE = function(msg)
     if arg == "on" or arg == "off" then ns.SetSetting("waypoints", arg == "on") end
     if ns.Setting("waypoints") then ns.SetWaypoint(ns.Current()) else ns.ClearMapPin() end
     say("map pin " .. (ns.Setting("waypoints") and "on" or "off"))
+  elseif cmd == "tracker" then
+    if arg == "on" or arg == "off" then ns.SetSetting("hideTracker", arg == "off") end
+    if ns.UpdateBlizzardTracker then ns.UpdateBlizzardTracker() end
+    say("Blizzard's quest tracker " .. (ns.Setting("hideTracker") and "hidden (the guide replaces it)" or "shown"))
   elseif cmd == "way" then
     if not ns.SetWaypoint(ns.Current()) then say("no waypoint for this step") end
   elseif cmd == "resume" then

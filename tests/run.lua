@@ -646,5 +646,68 @@ do
   SlashCmdList.EARTHMOTHERSGUIDE("waypoints on")
 end
 
+------------------------------------------------------------------------------ Blizzard tracker replacement
+do
+  local t = { alpha = 1, shown = true, hooks = {}, protected = true }
+  function t:SetAlpha(a) self.alpha = a end
+  function t:Hide() self.shown = false end
+  function t:Show() self.shown = true; for _, f in ipairs(self.hooks) do f() end end
+  function t:IsProtected() return self.protected end
+  function t:HookScript(_, f) self.hooks[#self.hooks + 1] = f end
+  ObjectiveTrackerFrame = t
+  local combat = false
+  InCombatLockdown = function() return combat end
+  ns.SetSetting("hideTracker", true)
+  ns.UpdateBlizzardTracker()
+  check(t.alpha == 0 and not t.shown, "Blizzard's tracker is hidden while the guide replaces it")
+  combat = true
+  t:Show()                                   -- Blizzard re-shows it during combat
+  check(t.alpha == 0, "re-shown in combat: made invisible at once (alpha only)")
+  combat = false
+  ns.eventFrame.scripts.OnEvent(ns.eventFrame, "PLAYER_REGEN_ENABLED")   -- harmless for the engine
+  SlashCmdList.EARTHMOTHERSGUIDE("tracker on")
+  check(t.alpha == 1 and t.shown, "/emg tracker on gives Blizzard's tracker back")
+  SlashCmdList.EARTHMOTHERSGUIDE("tracker off")
+  check(t.alpha == 0 and not t.shown, "/emg tracker off hides it again")
+  ns.ShowPanel(false)
+  check(t.shown, "hiding the guide panel brings Blizzard's tracker back")
+  ns.ShowPanel(true)
+  check(not t.shown, "showing the guide panel replaces it again")
+end
+
+------------------------------------------------------------------------------ optional item-started quests
+do
+  ns.startIndex = nil; ns.logReady = true
+  state.level, state.log, state.ready, state.done = 30, {}, {}, {}
+  local opt
+  for _, st in ipairs(ns.steps) do if st.opt and st.t == "accept" and st.zone then opt = st break end end
+  check(opt ~= nil, "route has optional item-started pickups")
+  local q = opt.q[1]
+  state.level = math.max(1, (opt.ql or 10))
+  check(ns.IsFiltered(opt), "an optional pickup is skipped while you don't have the quest")
+  local later = {}
+  for _, st in ipairs(ns.steps) do
+    if st.index > opt.index and st.q then for _, x in ipairs(st.q) do if x == q then later[#later + 1] = st end end end
+  end
+  for _, st in ipairs(later) do
+    ns.SetIndex(st.index, true)   -- standing on that later step
+    check(ns.IsFiltered(st) or ns.IsStepDone(st), "a step for an item quest you never looted never blocks (" .. st.t .. ")")
+  end
+  -- standing in its zone, it is listed under "Look out for"
+  for i = opt.index, 1, -1 do
+    local st = ns.steps[i]
+    if not st.opt and st.zone == opt.zone and st.chapter == opt.chapter then ns.SetIndex(i, true) break end
+  end
+  local found = false
+  for _, e in ipairs(ns.LookOutFor()) do if e.id == q then found = true end end
+  check(found, "optional pickup listed under Look out for in its zone (" .. tostring(opt.npc) .. ")")
+  state.log[q] = true
+  check(not ns.IsFiltered(opt), "once looted (quest in log), the pickup is part of the route")
+  local gone = true
+  for _, e in ipairs(ns.LookOutFor()) do if e.id == q then gone = false end end
+  check(gone, "and it leaves the Look out for list")
+  state.log = {}
+end
+
 print(("%d passed, %d failed, %d steps"):format(passed, failures, count))
 os.exit(failures == 0 and 0 or 1)

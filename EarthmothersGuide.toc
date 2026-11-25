@@ -24,5 +24,6 @@ Guide\Ch10_DustwallowHinterlands.lua
 Guide\Ch11_UngoroFelwoodAzshara.lua
 Guide\Ch12_PlaguelandsWinterspring.lua
 UI.lua
+Tracker.lua
 Items.lua
 Options.lua

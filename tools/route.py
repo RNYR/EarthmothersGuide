@@ -382,6 +382,7 @@ CHAPTERS = [
         quests([SILITHUS], 54, 59),
         step(t='note', text='Mount Hyjal is through Darkwhisper Gorge in southern Winterspring.'),
         quests([HYJAL], 56, 60),
+        flush(WINTERSPRING, THUNDER_BLUFF, ORGRIMMAR, DUROTAR, BARRENS, TANARIS),
         train(58),
         dungeon("Shaper's Terrace", 58, 60, zones=[16985], turnin_zones=[UNGORO, SILITHUS, MULGORE]),
         step(t='zone', text='Head to Undercity to hand in the quests waiting there.', area=UNDERCITY),

@@ -13,7 +13,8 @@ ns.listeners = {}    -- callbacks fired when the current step or its state chang
 
 local DEFAULTS = { dungeons = true, scale = 1, locked = false, shown = true,
                    waypoints = true, arrow = true, grayLevels = 6,
-                   compact = false, showCarried = true, itemButton = true, professions = true }
+                   compact = false, showCarried = true, itemButton = true, professions = true,
+                   hideTracker = true }
 
 -- Druid forms and where their quests live, for the catch-up warning when starting mid-route.
 ns.FORMS = {
@@ -173,6 +174,11 @@ end
 
 function ns.IsFiltered(step)
   local level = ns.PlayerLevel()
+  -- optional pickup (a quest started by a looted item): only part of the route once you have it
+  if step.opt and step.t == "accept" and not anyInLog(step) then
+    for _, q in ipairs(step.q or {}) do if ns.IsQuestTurnedIn(q) then return false end end
+    return true
+  end
   if step.d and not anyInLog(step) then
     -- dungeon steps for quests you still carry stay, even when dungeons are off or outlevelled
     if not ns.Setting("dungeons") then return true end
@@ -457,6 +463,23 @@ function ns.ReadyToHandIn()
     end
   end
   table.sort(out, function(a, b) return (a.step and a.step.index or 1e9) < (b.step and b.step.index or 1e9) end)
+  return out
+end
+
+-- Optional item-started quests you can run into in the zone you are in (this chapter), that you
+-- don't have yet: "Look out for: Hoof of Lakota'mani - starts Lakota'mani".
+function ns.LookOutFor()
+  local out = {}
+  local cur = ns.Current()
+  if not cur or not cur.zone then return out end
+  for _, st in ipairs(cur.chapter.steps) do
+    if st.opt and st.t == "accept" and st.zone == cur.zone and st.q then
+      local q = st.q[1]
+      if not ns.IsQuestInLog(q) and not ns.IsQuestTurnedIn(q) then
+        out[#out + 1] = { id = q, item = st.npc, name = (st.qn and st.qn[q]) or ("Quest " .. q) }
+      end
+    end
+  end
   return out
 end
 

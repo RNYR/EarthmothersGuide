@@ -15,3 +15,7 @@ First release.
 - Starts where your character is: reads your level and finished quests.
 - Settings page with options and a route browser; optional quest item button; compact mode;
   dungeon and profession quest toggles.
+- Replaces Blizzard's quest tracker under the minimap while the guide is shown (combat-safe).
+- Quests started by looted items as optional "Look out for" pickups.
+- Warns when a step's quests are 3 or more levels above you.
+- Never more than 20 quests in your log at once.

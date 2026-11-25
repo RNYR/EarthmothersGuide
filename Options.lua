@@ -165,6 +165,7 @@ local function buildPage(parent, name)
     checkbox(p, "Show carried quests", "showCarried"),
     checkbox(p, "Quest item button", "itemButton", function() ns.UpdateItemButton() end),
     checkbox(p, "Include profession quests", "professions"),
+    checkbox(p, "Replace Blizzard's quest tracker", "hideTracker", function() ns.UpdateBlizzardTracker() end),
   }
   for i, cb in ipairs(checks) do
     local col, row = (i - 1) % 2, math.floor((i - 1) / 2)

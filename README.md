@@ -28,6 +28,12 @@ A small brown panel shows the current step. It moves on by itself when you accep
 
 **Several quests at once:** at each quest hub the guide picks up every available quest, then shows the whole batch as one step: "Do these 9 quests in the area". Each quest is a checklist line with its remaining objectives; finished quests get a tick and stay in the list, quests you dropped are left out. The step completes when every quest in it is finished. Pickup steps show what is **Coming up** in the next batch, and **Also carrying** pins any other unfinished quest from the chapter in your log. **Compact quest list** (settings) shows one line per quest, e.g. "Disrupt the Attacks  12/19".
 
+**Replaces Blizzard's quest tracker:** while the guide panel is shown, Blizzard's tracker under the minimap is hidden and the panel takes its place (your full quest log is still on `L`). Untick **Replace Blizzard's quest tracker** in the settings or use `/emg tracker on` to get it back; hiding the guide panel also brings it back. Hiding happens safely in combat (the tracker becomes invisible at once and is fully hidden when combat ends).
+
+**Look out for:** some quests start from an item you loot (for example Hoof of Lakota'mani). They are optional: the panel lists them under **Look out for** while you are in their zone, and once you loot the item and take the quest, its steps join the route.
+
+**Falling behind:** if a step's quests are 3 or more levels above you, the panel says so.
+
 **Hand-ins:** quests are handed in right after a dungeon only when the NPC is nearby. Turn-ins in faraway cities wait for the next time the route goes there (for example the Ragefire Chasm quest for Varimathras is handed in when you reach Undercity at the start of chapter 3), and anything waiting in Thunder Bluff or Moonglade is handed in on your training trips. **Ready to hand in** under the step lists every finished quest in your log with the NPC and zone that takes it, so nothing waiting is ever invisible.
 
 **Hearthstone and travel:** the route tells you where to set your hearthstone at each new hub (Bloodhoof Village, the Crossroads, the Sepulcher, Sun Rock Retreat, Freewind Post, Tarren Mill, Grom'gol, Shadowprey Village, Rog'mar, Gadgetzan, Camp Mojache, Revantusk Village, Kargath, Light's Hope Chapel, Everlook); the step completes by itself once the game reports the new hearth. Every move to a new zone is a **Travel** step with how to get there, and it says "Use your hearthstone" whenever your hearth is set where you are going. If a quest waiting in Orgrimmar, Undercity or Thunder Bluff has waited 4 or more levels, the route adds a **Detour** to hand it in before it loses XP.
@@ -54,7 +60,8 @@ A small brown panel shows the current step. It moves on by itself when you accep
 | `/emg chapter 1-12` | jump to a chapter |
 | `/emg dungeons on\|off` | include or skip dungeon steps (also "Include dungeon steps" in the settings) |
 | `/emg check <questID>` | what the guide sees for one quest (useful for bug reports) |
-| `/emg way` | set the map waypoint for the step again |
+| `/emg way` | set the arrow and map pin for the step again |
+| `/emg tracker on\|off` | show or hide Blizzard's quest tracker |
 | `/emg resume` | work out your place again from your level and finished quests |
 | `/emg status` | level, finished guide quests, missing druid forms |
 | `/emg gray 0-10` | skip quests this many levels below you (0 = never) |
@@ -85,7 +92,8 @@ If your saved position is ever lost or out of date, the guide works out where yo
 
 - Quest data is community data, not Blizzard's. Some Forever quests may be missing or placed oddly; skip a stuck step with `/emg next` or "Skip this step" in the settings.
 - Quest order inside a zone is worked out by distance, so it is good but not hand-tuned.
-- Quests that drop from items are not listed as pickups.
+- Quests started by a looted item are optional pickups ("Look out for"), never required.
+- A few quests have no location in the community data, so the arrow cannot point at them.
 - The guide drops quests that hand in somewhere the route never goes back to.
 - The route never asks you to carry more than 20 quests at once.
 

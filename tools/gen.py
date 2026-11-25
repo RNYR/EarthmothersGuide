@@ -132,6 +132,21 @@ def givers(g):
             e = entity(kind, i)
             if e:
                 out.append((kind, i, e.get('name'), spawn_points(e)))
+    # quests started by an item you loot: only used when there is no NPC or object starter
+    if not out and len(g) > 2:
+        for iid in g[2] or []:
+            it = I.get(str(iid)) or {}
+            pts = []
+            for nid in (it.get('npcDrops') or [])[:12]:
+                e = N.get(str(nid))
+                if e:
+                    pts += spawn_points(e)
+            for oid in (it.get('objectDrops') or [])[:12]:
+                e = O.get(str(oid))
+                if e:
+                    pts += spawn_points(e)
+            if pts and it.get('name'):
+                out.append(('i', iid, it['name'], pts))
     return out
 
 
@@ -153,6 +168,25 @@ def objective_points(q, areas):
     if not isinstance(obj, list):
         return None
     cands = []
+    # "go to this spot" quests (explore, use an item there): the database gives the spot directly
+    trig = q.get('trigger')
+    if isinstance(trig, list) and len(trig) >= 2 and isinstance(trig[1], dict):
+        pts = []
+        for z, lst in trig[1].items():
+            for pnt in lst or []:
+                if isinstance(pnt, list) and len(pnt) >= 2 and pnt[0] is not None and pnt[0] >= 0:
+                    pts.append((parent(int(z)), float(pnt[0]), float(pnt[1])))
+        cands.append(pts)
+    # kill credit (e.g. "kill any of these NPCs"): group 5 lists the NPC IDs that count
+    kc = obj[4] if len(obj) > 4 else None
+    for entry in kc or []:
+        if isinstance(entry, list) and entry and isinstance(entry[0], list):
+            pts = []
+            for nid in entry[0][:12]:
+                e = N.get(str(nid))
+                if e:
+                    pts += spawn_points(e)
+            cands.append(pts)
     for idx, group in enumerate(obj[:3]):
         for entry in group or []:
             if not isinstance(entry, list) or not entry:
@@ -401,8 +435,15 @@ class Builder:
             ordered, self.pos = greedy([(k, v['pt']) for k, v in by_giver.items()], self.pos)
             for (kind, gid, gname), pt in ordered:
                 qs = sorted(by_giver[(kind, gid, gname)]['q'], key=lambda i: (Q[str(i)].get('level') or 0, i))
-                steps.append(dict(t='accept', q=qs, npc=gname, text='Accept from ' + gname,
-                                  **self.loc_fields(pt), **extra))
+                if kind == 'i':
+                    # an item that starts a quest: optional - never blocks the route; the panel
+                    # lists it under "Look out for" while you are in its zone
+                    steps.append(dict(t='accept', q=qs, npc=gname, opt=True,
+                                      text=f"Optional: loot {gname} - it starts {qname(qs[0])}",
+                                      **self.loc_fields(pt), **extra))
+                else:
+                    steps.append(dict(t='accept', q=qs, npc=gname, text='Accept from ' + gname,
+                                      **self.loc_fields(pt), **extra))
                 for qid in qs:
                     self.used.add(qid)
                     fin = givers(Q[str(qid)].get('end'))
@@ -719,7 +760,7 @@ class Builder:
         return names
 
 
-KEY_ORDER = ['t', 'text', 'q', 'qn', 'npc', 'zone', 'm', 'x', 'y', 'zoneName', 'lvl', 'spell', 'd', 'dmin', 'dmax', 'ql', 'cls', 'pts', 'obj', 'prof', 'bind', 'tip', 'tipRep', 'radius']
+KEY_ORDER = ['t', 'text', 'q', 'qn', 'npc', 'zone', 'm', 'x', 'y', 'zoneName', 'lvl', 'spell', 'd', 'dmin', 'dmax', 'ql', 'cls', 'pts', 'obj', 'prof', 'bind', 'opt', 'tip', 'tipRep', 'radius']
 
 
 def lua(v):
