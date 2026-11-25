@@ -1,4 +1,5 @@
 .DS_Store
 tools/unfinished.json
+tools/levels.json
 tools/__pycache__/
 *.zip

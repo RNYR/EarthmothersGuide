@@ -156,7 +156,7 @@ CHAPTERS = [
             dict(t='accept', q=[6002], tip='Lunaclaw waits at the Moonkin Stone west of Camp Taurajo; do it on the way into the Barrens.'),
         ),
     ]},
-    {'file': 'Ch02_Barrens.lua', 'title': 'The Barrens', 'levels': (10, 16), 'segments': [
+    {'file': 'Ch02_Barrens.lua', 'title': 'The Barrens', 'levels': (10, 15), 'segments': [
         step(t='zone', text='Leave Mulgore east through the gates into the Barrens.', area=BARRENS),
         bind(3934, 'The Crossroads', BARRENS),
         chain(
@@ -190,7 +190,7 @@ CHAPTERS = [
         dungeon('Ragefire Chasm', 13, 18, zones=[2437], turnin_zones=[ORGRIMMAR, THUNDER_BLUFF, BARRENS]),
         quests([BARRENS], 14, 17),
     ]},
-    {'file': 'Ch03_Silverpine.lua', 'title': 'Aquatic Form and Silverpine', 'levels': (16, 21), 'segments': [
+    {'file': 'Ch03_Silverpine.lua', 'title': 'Aquatic Form and Silverpine', 'levels': (15, 20), 'segments': [
         train(16),
         chain(
             dict(t='accept', q=[27]),
@@ -210,7 +210,7 @@ CHAPTERS = [
         step(t='goto', text='Aquatic Form: dive to the lockbox off the Silverpine coast and loot one Half Pendant.',
              area=SILVERPINE, x=29.6, y=29.2, radius=2),
     ]},
-    {'file': 'Ch04_BarrensWC.lua', 'title': 'Barrens and Wailing Caverns', 'levels': (18, 23), 'segments': [
+    {'file': 'Ch04_BarrensWC.lua', 'title': 'Barrens and Wailing Caverns', 'levels': (20, 23), 'segments': [
         bind(3934, 'The Crossroads', BARRENS),
         chain(
             dict(t='complete', q=[30], m=1413, zone='The Barrens', x=56.7, y=8.3,
@@ -241,7 +241,7 @@ CHAPTERS = [
         step(t='spell', spell=CAT, text='Learn Cat Form.'),
     ]},
     {'file': 'Ch05_StonetalonAshenvaleNeedles.lua', 'title': 'Stonetalon, Ashenvale and Thousand Needles',
-     'levels': (20, 30), 'segments': [
+     'levels': (23, 29), 'segments': [
         bind(7731, 'Sun Rock Retreat', STONETALON),
         quests([STONETALON], 17, 27, giver_zones=[BARRENS]),
         quests([ASHENVALE], 19, 28),
@@ -253,7 +253,7 @@ CHAPTERS = [
         dungeon('Razorfen Kraul', 25, 33, zones=[491, 1717], turnin_zones=[BARRENS, THUNDER_BLUFF]),
         train(28),
     ]},
-    {'file': 'Ch06_HillsbradArathi.lua', 'title': 'Hillsbrad, Alterac and Arathi', 'levels': (28, 35), 'segments': [
+    {'file': 'Ch06_HillsbradArathi.lua', 'title': 'Hillsbrad, Alterac and Arathi', 'levels': (29, 35), 'segments': [
         train(30),
         step(t='spell', spell=TRAVEL, text='Learn Travel Form at your trainer.'),
         step(t='zone', text='Zeppelin to Undercity, then south through Silverpine to Tarren Mill.', area=HILLSBRAD),
@@ -268,7 +268,7 @@ CHAPTERS = [
         dungeon('Scarlet Monastery', 30, 42, zones=[796], turnin_zones=[UNDERCITY, TIRISFAL, HILLSBRAD]),
         train(32),
     ]},
-    {'file': 'Ch07_StranglethornDesolace.lua', 'title': 'Stranglethorn and Desolace', 'levels': (32, 40), 'segments': [
+    {'file': 'Ch07_StranglethornDesolace.lua', 'title': 'Stranglethorn and Desolace', 'levels': (35, 38), 'segments': [
         step(t='zone', text="Zeppelin from Orgrimmar to Grom'gol in Stranglethorn.", area=STV),
         bind(5814, "Grom'gol Base Camp", STV),
         quests([STV], 30, 39),
@@ -283,7 +283,7 @@ CHAPTERS = [
         dungeon('Razorfen Downs', 35, 45, zones=[722], turnin_zones=[THUNDER_BLUFF, NEEDLES, SHENDRALAS, BARRENS]),
         train(36),
     ]},
-    {'file': 'Ch08_Riverglades.lua', 'title': 'Riverglades', 'levels': (37, 44), 'segments': [
+    {'file': 'Ch08_Riverglades.lua', 'title': 'Riverglades', 'levels': (38, 43), 'segments': [
         step(t='zone', text='Fly to Gadgetzan and take the Steamwheedle ship to Powderfuse Port.', area=RIVERGLADES,
              tip='Riverglades has nearly 200 quests and replaces the old 36-44 zone hopping.'),
         bind(256675, "Rog'mar", RIVERGLADES),
@@ -294,7 +294,14 @@ CHAPTERS = [
         step(t='note', text='Level 40: buy your Kodo from Harb Clawhoof in Bloodhoof Village and train riding.'),
         train(42),
     ]},
-    {'file': 'Ch09_TanarisFeralasShendralas.lua', 'title': "Tanaris, Feralas and Shen'dralas", 'levels': (42, 48), 'segments': [
+    {'file': 'Ch09_TanarisFeralasShendralas.lua', 'title': "Eastern Kingdoms, Tanaris, Feralas and Shen'dralas", 'levels': (43, 47), 'segments': [
+        step(t='note', text="Eastern Kingdoms trip: zeppelin from Orgrimmar to Undercity for Arathi and the Badlands, then Stranglethorn."),
+        quests([ARATHI], 40, 46),
+        quests([BADLANDS], 40, 46),
+        dungeon('Uldaman', 40, 51, zones=[1337, 1517], turnin_zones=[BADLANDS]),
+        quests([SWAMP], 41, 47),
+        quests([STV], 41, 47),
+        train(44),
         bind(7733, 'Gadgetzan', TANARIS),
         quests([TANARIS], 40, 48),
         bind(7737, 'Camp Mojache', FERALAS),
@@ -303,16 +310,9 @@ CHAPTERS = [
         quests([SHENDRALAS], 38, 46, giver_zones=[DESOLACE],
                note="Shen'dralas (new): the way in starts with Uthek the Wise in Desolace and leads south through the Valley of Bones."),
         dungeon("Zul'Farrak", 44, 54, zones=[1176, 978], turnin_zones=[TANARIS, NEEDLES]),
-        train(44),
-        step(t='note', text="Eastern Kingdoms trip: zeppelin from Orgrimmar to Undercity for Arathi and the Badlands."),
-        quests([ARATHI], 38, 45),
-        quests([BADLANDS], 36, 46),
-        dungeon('Uldaman', 40, 51, zones=[1337, 1517], turnin_zones=[BADLANDS]),
-        quests([SWAMP], 40, 46),
-        quests([STV], 40, 46),
         train(46),
     ]},
-    {'file': 'Ch10_DustwallowHinterlands.lua', 'title': 'Maraudon, Dustwallow and the Hinterlands', 'levels': (46, 52),
+    {'file': 'Ch10_DustwallowHinterlands.lua', 'title': 'Maraudon, Dustwallow and the Hinterlands', 'levels': (47, 52),
      'segments': [
         dungeon('Maraudon', 45, 55, zones=[2100], turnin_zones=[DESOLACE, SHENDRALAS]),
         quests([FERALAS], 48, 51),
@@ -328,7 +328,7 @@ CHAPTERS = [
         quests([BADLANDS], 43, 51),
         train(50),
     ]},
-    {'file': 'Ch11_UngoroFelwoodAzshara.lua', 'title': "Un'Goro, Felwood, Azshara and Burning Steppes", 'levels': (50, 56),
+    {'file': 'Ch11_UngoroFelwoodAzshara.lua', 'title': "Un'Goro, Felwood, Azshara and Burning Steppes", 'levels': (52, 55),
      'segments': [
         chain(
             dict(t='accept', q=[9063], text='Torwa Pathfinder - druid quest for Un\'Goro'),

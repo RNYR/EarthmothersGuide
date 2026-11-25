@@ -234,9 +234,9 @@ end
 ns.InitPosition(false)
 check(ns.Current().chapter.num <= 6, "level 25: chapter 7 quests done early do not move the start past your level (got " .. ns.Current().chapter.num .. ")")
 -- ...but at the right level, quest history beats level and moves the start there
-state.level = 33
+state.level = ns.chapters[7].levels[1]
 ns.InitPosition(false)
-check(ns.Current().chapter.num >= 7, "level 33: finished chapter 7 quests move the start to chapter 7+ (got " .. ns.Current().chapter.num .. ")")
+check(ns.Current().chapter.num >= 7, "at chapter 7's level: finished chapter 7 quests move the start there (got " .. ns.Current().chapter.num .. ")")
 state.level = 25
 for _, cmd in ipairs({ "status", "gray 4", "gray 6", "resume", "check 6128", "check" }) do
   local ok, e = pcall(SlashCmdList.EARTHMOTHERSGUIDE, cmd)
@@ -707,6 +707,24 @@ do
   for _, e in ipairs(ns.LookOutFor()) do if e.id == q then gone = false end end
   check(gone, "and it leaves the Look out for list")
   state.log = {}
+end
+
+------------------------------------------------------------------------------ level pacing
+do
+  -- chapters follow each other without level gaps, and the route ends at 60
+  for n = 2, 12 do
+    check(ns.chapters[n].levels[1] <= ns.chapters[n - 1].levels[2] + 1, "chapter " .. n .. " starts where chapter " .. (n - 1) .. " ends")
+  end
+  check(ns.chapters[12].levels[2] == 60, "the route reaches level 60")
+  local grinds = 0
+  for _, st in ipairs(ns.steps) do
+    if st.t == "level" and st.text:match("^Grind to level") then
+      grinds = grinds + 1
+      check(st.lvl >= st.chapter.levels[1] - 1 and st.lvl <= st.chapter.levels[2] + 1,
+        "grind to " .. st.lvl .. " fits chapter " .. st.chapter.num)
+    end
+  end
+  check(grinds > 0 and grinds < 20, "a handful of short grinds where quests run out (" .. grinds .. ")")
 end
 
 print(("%d passed, %d failed, %d steps"):format(passed, failures, count))

@@ -12,6 +12,7 @@ import json, math, os, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import route  # noqa: E402
+import xp as xpsim  # noqa: E402
 
 DB = json.load(open(sys.argv[1]))
 QDB_DIR = sys.argv[2]
@@ -19,6 +20,8 @@ OUT_DIR = sys.argv[3]
 Q, N, O, I = DB['quests'], DB['npcs'], DB['objects'], DB['items']
 
 TAUREN, DRUID = 32, 1024
+
+QUEST_XP = xpsim.load_quest_xp(QDB_DIR)
 
 # quests a dungeon section lists by ID stay in that section (they often have no zone of their own)
 DUNGEON_QUESTS = {q for ch in route.CHAPTERS for seg in ch['segments']
@@ -76,6 +79,7 @@ SOD_RANGE = range(76000, 84000)
 HOSTILE_START = {87, 92, 93, 576}   # Bloodsail Buccaneers, Gelkis, Magram, Timbermaw Hold
 
 LOG_CAP = 20   # quests you can carry at once (Classic-era limit; kept as the safe bound)
+MAX_GRIND = 3  # at most this many levels of grinding before a quest; bigger gaps wait for a later pass
 
 
 def exists_on_forever(qid):
@@ -280,7 +284,9 @@ class Builder:
         self.log_full = 0       # how often a section stopped because the quest log was full
         self.hearth = None      # {'place', 'area'} where the hearthstone is set
         self.area = None        # zone the route is in right now
-        self.level = 1          # rough character level at this point of the route
+        self.char = xpsim.Character(QUEST_XP)   # simulated character (real Forever quest XP)
+        self.deferred = {}      # zone -> quests skipped because the character was too low
+        self.grinds = 0         # "grind to level N" steps added
 
     # ------------------------------------------------------------------ exclusive quests
     def on_accept(self, qid):
@@ -357,7 +363,7 @@ class Builder:
             over = []
             for qid, fin in self.pending.items():
                 if fin and any(p[0] == city for p in fin[3]) and \
-                        (Q[str(qid)].get('level') or 0) + route.MAX_WAIT_LEVELS <= self.level:
+                        (Q[str(qid)].get('level') or 0) + route.MAX_WAIT_LEVELS <= self.char.level:
                     over.append(qid)
             if over:
                 names = ', '.join(qname(q) for q in over[:3]) + (' and more' if len(over) > 3 else '')
@@ -409,6 +415,24 @@ class Builder:
         for _round in range(200):
             ready = [p for p in pool if p not in self.used and p not in self.blocked
                      and self.prereq_ok(Q[str(p)], pool)]
+            if not dungeon:
+                # Only quests the simulated character can take now. If everything left needs a
+                # little more level (up to MAX_GRIND), add a "grind to level N" step first - as
+                # real players do - instead of dropping the quests.
+                def need(p):
+                    q = Q[str(p)]
+                    return max(q.get('reqLevel') or 0, (q.get('level') or 0) - 3)
+                now = [p for p in ready if need(p) <= self.char.level]
+                if not now and ready:
+                    target = min(need(p) for p in ready)
+                    if target - self.char.level <= MAX_GRIND:
+                        steps.append(dict(t='level', lvl=target,
+                                          text=f'Grind to level {target}: kill mobs around here before the next quests.',
+                                          tip='Mobs your level or a little higher give the most XP; a dungeon run also works.'))
+                        self.char.level, self.char.xp = target, 0
+                        self.grinds += 1
+                        now = [p for p in ready if need(p) <= self.char.level]
+                ready = now
             if dungeon and inside and _round == 0:
                 outside = [p for p in ready if not any(pt[0] in inside for pt in (givers(Q[str(p)].get('start')) or [(0, 0, 0, [])])[0][3])]
                 if outside:
@@ -514,6 +538,7 @@ class Builder:
                 self.pending.pop(qid, None)
                 self.done.add(qid)
                 self.on_turnin(qid)
+                self.char.turn_in(qid)
 
     # ------------------------------------------------------------------ segment handlers
     def zone_pool(self, seg):
@@ -565,12 +590,12 @@ class Builder:
         for ch in route.CHAPTERS:
             steps = []
             self.pos = None
+            ch['_start_level'] = self.char.level
             for seg in ch['segments']:
                 kind = seg['type']
                 if kind == 'quests':
                     # questing happens in the section's zones; city hand-ins wait for one visit at the end
                     areas = set(seg['zones']) | set(seg.get('giver_zones', []))
-                    self.level = max(self.level, seg['levels'][0])
                     pool = self.zone_pool(seg)
                     away = self.area is not None and self.area not in seg['zones']
                     # no trip for a zone with nothing (or a single quest) to do
@@ -585,6 +610,10 @@ class Builder:
                     if seg.get('note'):
                         steps.append(dict(t='note', text=seg['note']))
                     self.quest_block(steps, pool, areas, box=seg.get('box'))
+                    left = [q for q in pool if q not in self.used and q not in self.done and q not in self.blocked
+                            and (Q[str(q)].get('reqLevel') or 0) > self.char.level]
+                    if left:
+                        self.deferred.setdefault(seg['zones'][0], set()).update(left)
                     if self.pos:
                         self.area = self.pos[0]
                     for tz in seg.get('turnin_zones', []):
@@ -593,7 +622,6 @@ class Builder:
                     self.stats[f"{ch['title']} / {','.join(ZONE_NAMES.get(z, str(z)) for z in seg['zones'])} #{len(self.stats)}"] = len(pool)
                 elif kind == 'dungeon':
                     name, lo, hi = seg['name'], seg['levels'][0], seg['levels'][1]
-                    self.level = max(self.level, lo)
                     self.detours(steps)
                     ids = list(seg['quests'])
                     dz = set(seg.get('zones', []))
@@ -658,6 +686,7 @@ class Builder:
                             self.used.add(qid)
                             if s['t'] == 'turnin':
                                 self.done.add(qid); self.pending.pop(qid, None)
+                                self.char.turn_in(qid)
                         steps.append(s)
                 elif kind == 'flush':
                     for z in seg['zones']:
@@ -711,6 +740,7 @@ class Builder:
                                         + back + '.')
                             # the Moonglade trip is also when Moonglade hand-ins happen
                             self.turnins(steps, {route.MOONGLADE})
+            ch['sim_levels'] = (ch.get('_start_level', 1), max(ch.get('_start_level', 1), min(60, self.char.level)))
             self.chapters.append((ch, steps))
         # Drop quests the route picks up but never hands in (deliveries to zones it never revisits).
         self.dropped = dict(self.pending)
@@ -737,6 +767,7 @@ class Builder:
                 os.remove(os.path.join(guide_dir, old))  # chapter renamed or removed
         for num, (ch, steps) in enumerate(self.chapters, 1):
             path = os.path.join(OUT_DIR, 'Guide', ch['file'])
+            lv = ch.get('sim_levels') or ch['levels']
             lines = ["-- Earthmother's Guide - generated by tools/gen.py from tools/route.py. Do not edit by hand.",
                      '-- Quest/NPC/coordinate data derived from QuestieDB v1.1.5 (Questie contributors), used under',
                      '-- GPL-3.0; modified (filtered, ordered, reformatted). Names and quest text (c) Blizzard Entertainment.',
@@ -744,7 +775,7 @@ class Builder:
                      'local _, ns = ...', 'ns = ns or _G.EarthmothersGuide', '',
                      f'ns.AddChapter({num}, {{',
                      f'  title = {lua(ch["title"])},',
-                     f'  levels = {{ {ch["levels"][0]}, {ch["levels"][1]} }},',
+                     f'  levels = {{ {lv[0]}, {lv[1]} }},',
                      '  steps = {']
             for s in steps:
                 if s.get('q'):
@@ -803,6 +834,11 @@ if __name__ == '__main__':
     for k, v in counts.items():
         print(f'{v:4d} steps   {k}')
     print('sections stopped early because the quest log was full:', b.log_full)
+    print('"grind to level" steps added:', b.grinds)
+    for z, qs in b.deferred.items():
+        still = [q for q in qs if q not in b.used]
+        if still:
+            print(f'  {len(still):3d} quests in {ZONE_NAMES.get(z)} never reached: character too low when there')
     peak, log = 0, set()
     for _ch, steps in b.chapters:
         for st in steps:
@@ -814,6 +850,33 @@ if __name__ == '__main__':
     print('largest quest log along the route:', peak)
     if peak > LOG_CAP:
         raise SystemExit(f'quest log goes over {LOG_CAP} ({peak})')
+    # --- simulated level along the route, from real Forever quest XP
+    QXP = xpsim.load_quest_xp(QDB_DIR)
+    report = {}
+    for share in (0.0, xpsim.KILL_SHARE):
+        char = xpsim.Character(QXP, share)
+        rows = []
+        for ch, steps in b.chapters:
+            start = char.exact
+            hard = grey = 0
+            for st in steps:
+                if st.get('t') == 'level' and share == xpsim.KILL_SHARE and (st.get('lvl') or 0) > char.level:
+                    char.level, char.xp = st['lvl'], 0      # the grind the route asks for
+                if st.get('t') == 'accept' and not st.get('opt'):
+                    for q in st['q']:
+                        if (Q[str(q)].get('reqLevel') or 0) > char.level:
+                            hard += 1
+                if st.get('t') == 'turnin':
+                    for q in st['q']:
+                        _got, was_grey = char.turn_in(q)
+                        grey += was_grey
+            rows.append((ch['title'], ch['levels'], round(start, 1), round(char.exact, 1), hard, grey))
+        report[share] = rows
+    print('\nSimulated level by chapter (real Forever quest XP; kills modelled as a share on top):')
+    print(f"{'chapter':48} {'label':>7} {'quests only':>13} {'+' + str(int(xpsim.KILL_SHARE * 100)) + '% kills':>13} {'too high':>9} {'grey':>5}")
+    for (t, lv, s0, e0, _h0, _g0), (_t, _lv, s1, e1, h1, g1) in zip(report[0.0], report[xpsim.KILL_SHARE]):
+        print(f"{t[:48]:48} {lv[0]:>3}-{lv[1]:<3} {s0:>5}->{e0:<6} {s1:>5}->{e1:<6} {h1:>9} {g1:>5}")
+    json.dump({str(k): v for k, v in report.items()}, open(os.path.join(OUT_DIR, 'tools', 'levels.json'), 'w'), indent=1)
     left = [q for q in b.dropped]
     print('quests accepted but never turned in by the route:', len(left))
     json.dump({str(q): qname(q) for q in left}, open(os.path.join(OUT_DIR, 'tools', 'unfinished.json'), 'w'), indent=1)

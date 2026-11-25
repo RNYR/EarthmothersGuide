@@ -19,3 +19,5 @@ First release.
 - Quests started by looted items as optional "Look out for" pickups.
 - Warns when a step's quests are 3 or more levels above you.
 - Never more than 20 quests in your log at once.
+- Level pacing from real Forever quest XP: chapter ranges simulated, short "grind to level" steps where
+  quests run out, Eastern Kingdoms trip moved to the start of chapter 9.

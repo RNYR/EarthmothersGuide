@@ -75,21 +75,26 @@ If your saved position is ever lost or out of date, the guide works out where yo
 
 ## Chapters
 
-1. Mulgore 1–10 (Bear Form chain starts)
-2. The Barrens 10–16 (Lunaclaw, Cure Poison, Ragefire Chasm)
-3. Aquatic Form and Silverpine 16–21 (Ruins of Lordaeron, Shadowfang Keep)
-4. Barrens and Wailing Caverns 18–23 (new Cat Form chain)
-5. Stonetalon, Ashenvale, Thousand Needles 20–30 (Blackfathom Deeps, Razorfen Kraul)
-6. Hillsbrad, Alterac, Arathi 28–35 (City of Dalaran, Excavation Site: Wetlands, Scarlet Monastery)
-7. Stranglethorn and Desolace 32–40 (The Drowned City, Razorfen Downs)
-8. Riverglades 37–44 (Krol'dok Stronghold, Dire Bear, Kodo)
-9. Tanaris, Feralas, Shen'dralas 42–48 (Zul'Farrak, Uldaman)
-10. Maraudon, Dustwallow, Hinterlands 46–52 (Alcaz Prison)
-11. Un'Goro, Felwood, Azshara, Burning Steppes 50–56 (Sunken Temple, Blackrock Depths)
-12. Plaguelands, Winterspring, Silithus 55–60 (Blackmaw Hold, Shaper's Terrace, Mount Hyjal)
+Level ranges come from simulating the route with real WoW: Forever quest XP (see Development).
+
+1. Mulgore 1-10 (Bear Form chain starts)
+2. The Barrens 10-15 (Lunaclaw, Cure Poison, Ragefire Chasm)
+3. Aquatic Form and Silverpine 15-20 (Ruins of Lordaeron, Shadowfang Keep)
+4. Barrens and Wailing Caverns 20-23 (Aquatic Form, new Cat Form chain)
+5. Stonetalon, Ashenvale, Thousand Needles 23-29 (Blackfathom Deeps, Razorfen Kraul)
+6. Hillsbrad, Alterac, Arathi 29-35 (City of Dalaran, Excavation Site: Wetlands, Scarlet Monastery)
+7. Stranglethorn and Desolace 35-38 (The Drowned City, Razorfen Downs)
+8. Riverglades 38-43 (Krol'dok Stronghold, Dire Bear, Kodo)
+9. Eastern Kingdoms, Tanaris, Feralas, Shen'dralas 43-47 (Uldaman, Zul'Farrak)
+10. Maraudon, Dustwallow, Hinterlands 47-52 (Alcaz Prison)
+11. Un'Goro, Felwood, Azshara, Burning Steppes 52-55 (Sunken Temple, Blackrock Depths)
+12. Plaguelands, Winterspring, Silithus, Mount Hyjal 55-60 (Blackmaw Hold, Shaper's Terrace)
+
+Where quests run out before the next ones are open, the route adds a short **Grind to level N** step (it completes by itself when you get there).
 
 ## Known limits
 
+- Kill XP is an estimate (40% on top of quest XP); if you level faster or slower, the guide still follows your quests, and warns when quests are above you.
 - Quest data is community data, not Blizzard's. Some Forever quests may be missing or placed oddly; skip a stuck step with `/emg next` or "Skip this step" in the settings.
 - Quest order inside a zone is worked out by distance, so it is good but not hand-tuned.
 - Quests started by a looted item are optional pickups ("Look out for"), never required.
@@ -107,6 +112,8 @@ python3 -I tools/extract_questiedb.py "/Applications/World of Warcraft/_forever_
 python3 -I tools/gen.py /tmp/emg-db.json "/Applications/World of Warcraft/_forever_/Interface/AddOns/QuestieDB" .
 luajit tests/run.lua
 ```
+
+The generator also simulates a character walking the route, using QuestieDB's real Forever quest XP (aggregated from real Forever sessions, scaled by level with Questie's formula) and the Classic-era XP curve. Kill XP is not in any database; it is modelled as 40% on top of quest XP (`tools/xp.py`, `KILL_SHARE`). The simulation sets the chapter level ranges, adds the grind steps, and prints a per-chapter report (quests-only vs with kills, pickups above your level, grey quests).
 
 The arrow texture is drawn by `python3 -I tools/make_arrow.py Media/Arrow.tga`.
 

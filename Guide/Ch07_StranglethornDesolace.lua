@@ -7,7 +7,7 @@ ns = ns or _G.EarthmothersGuide
 
 ns.AddChapter(7, {
   title = "Stranglethorn and Desolace",
-  levels = { 32, 40 },
+  levels = { 35, 38 },
   steps = {
     { t = "zone", text = "Zeppelin from Orgrimmar to Grom'gol in Stranglethorn.", zone = "Stranglethorn Vale", m = 1434, zoneName = "Stranglethorn Vale", tip = "Zeppelin from Orgrimmar to Grom'gol Base Camp." },
     { t = "turnin", text = "Turn in to Hemet Nesingwary", q = { 5762 }, qn = { [5762] = "Hemet Nesingwary" }, npc = "Hemet Nesingwary", zone = "Stranglethorn Vale", m = 1434, x = 35.7, y = 10.8, ql = 31 },
@@ -18,7 +18,7 @@ ns.AddChapter(7, {
     { t = "accept", text = "Accept from Nimboya", q = { 581 }, qn = { [581] = "Hunt for Yenniku" }, npc = "Nimboya", zone = "Stranglethorn Vale", m = 1434, x = 32.2, y = 27.7, ql = 34 },
     { t = "accept", text = "Accept from Kin'weelay", q = { 596, 629 }, qn = { [596] = "Bloody Bone Necklaces", [629] = "The Vile Reef" }, npc = "Kin'weelay", zone = "Stranglethorn Vale", m = 1434, x = 32.3, y = 27.7, ql = 37 },
     { t = "accept", text = "Accept from Gemmil", q = { 97453 }, qn = { [97453] = "Weed Whacked" }, npc = "Gemmil", zone = "Stranglethorn Vale", m = 1434, x = 32.8, y = 28.4, ql = 38 },
-    { t = "accept", text = "Accept from Commander Aggro'gosh", q = { 568, 95141 }, qn = { [568] = "The Defense of Grom'gol", [95141] = "Report to Rog'mar" }, npc = "Commander Aggro'gosh", zone = "Stranglethorn Vale", m = 1434, x = 32.2, y = 28.9, ql = 38 },
+    { t = "accept", text = "Accept from Commander Aggro'gosh", q = { 568 }, qn = { [568] = "The Defense of Grom'gol" }, npc = "Commander Aggro'gosh", zone = "Stranglethorn Vale", m = 1434, x = 32.2, y = 28.9, ql = 36 },
     { t = "accept", text = "Accept from Far Seer Mok'thardin", q = { 570 }, qn = { [570] = "Mok'thardin's Enchantment" }, npc = "Far Seer Mok'thardin", zone = "Stranglethorn Vale", m = 1434, x = 32.1, y = 29.2, ql = 38 },
     { t = "accept", text = "Accept from Wendel Mathers", q = { 97047 }, qn = { [97047] = "The Cook in the Cage" }, npc = "Wendel Mathers", zone = "Stranglethorn Vale", m = 1434, x = 44.3, y = 7.9, ql = 38 },
     { t = "accept", text = "Accept from Kebok", q = { 189, 213 }, qn = { [189] = "Bloodscalp Ears", [213] = "Hostile Takeover" }, npc = "Kebok", zone = "Stranglethorn Vale", m = 1434, x = 27.0, y = 77.1, ql = 36 },
@@ -57,6 +57,7 @@ ns.AddChapter(7, {
     { t = "turnin", text = "Turn in to Captain Aransas", q = { 97048 }, qn = { [97048] = "Returning to Port" }, npc = "Captain Aransas", zone = "Stranglethorn Vale", m = 1434, x = 27.7, y = 76.7, ql = 38 },
     { t = "turnin", text = "Turn in to Drizzlik", q = { 577 }, qn = { [577] = "Some Assembly Required" }, npc = "Drizzlik", zone = "Stranglethorn Vale", m = 1434, x = 28.3, y = 77.6, ql = 36 },
     { t = "accept", text = "Accept from Drizzlik", q = { 628 }, qn = { [628] = "Excelsior" }, npc = "Drizzlik", zone = "Stranglethorn Vale", m = 1434, x = 28.3, y = 77.6, ql = 38 },
+    { t = "accept", text = "Accept from Commander Aggro'gosh", q = { 95141 }, qn = { [95141] = "Report to Rog'mar" }, npc = "Commander Aggro'gosh", zone = "Stranglethorn Vale", m = 1434, x = 32.2, y = 28.9, ql = 38 },
     { t = "accept", text = "Accept from Hemet Nesingwary", q = { 195 }, qn = { [195] = "Raptor Mastery" }, npc = "Hemet Nesingwary", zone = "Stranglethorn Vale", m = 1434, x = 35.7, y = 10.8, ql = 36 },
     { t = "accept", text = "Accept from Ajeck Rouack", q = { 186 }, qn = { [186] = "Tiger Mastery" }, npc = "Ajeck Rouack", zone = "Stranglethorn Vale", m = 1434, x = 35.6, y = 10.6, ql = 33 },
     { t = "accept", text = "Accept from Sir S. J. Erlgadin", q = { 191 }, qn = { [191] = "Panther Mastery" }, npc = "Sir S. J. Erlgadin", zone = "Stranglethorn Vale", m = 1434, x = 35.5, y = 10.6, ql = 33 },
@@ -82,9 +83,7 @@ ns.AddChapter(7, {
     { t = "train", text = "Level 34: train new druid ranks (Moonglade or Thunder Bluff).", lvl = 34, tip = "Quickest: cast Teleport: Moonglade and train with Loganaar in Nighthaven, then hearth back to Grom'gol Base Camp." },
     { t = "zone", text = "Travel to Shadowprey Village", zone = "Desolace", m = 1443, zoneName = "Desolace" },
     { t = "bind", text = "Set your hearthstone with Innkeeper Sikewa in Shadowprey Village", npc = "Innkeeper Sikewa", zone = "Desolace", m = 1443, x = 24.1, y = 68.2, bind = "Shadowprey Village" },
-    { t = "zone", text = "Detour to Thunder Bluff: hand in In Nightmares, Sacred Fire, Elder Knowledge before they lose XP.", zone = "Thunder Bluff", m = 1456, zoneName = "Thunder Bluff", tip = "Fly to Thunder Bluff - or cast Teleport: Moonglade and train/hand in at Nighthaven if that is all you need." },
-    { t = "turnin", text = "Turn in to Arch Druid Hamuul Runetotem", q = { 3369 }, qn = { [3369] = "In Nightmares" }, npc = "Arch Druid Hamuul Runetotem", zone = "Thunder Bluff", m = 1456, x = 78.6, y = 28.6, ql = 25 },
-    { t = "turnin", text = "Turn in to Magatha Grimtotem", q = { 5062 }, qn = { [5062] = "Sacred Fire" }, npc = "Magatha Grimtotem", zone = "Thunder Bluff", m = 1456, x = 69.8, y = 30.9, ql = 27 },
+    { t = "zone", text = "Detour to Thunder Bluff: hand in Elder Knowledge before it loses XP.", zone = "Thunder Bluff", m = 1456, zoneName = "Thunder Bluff", tip = "Fly to Thunder Bluff - or cast Teleport: Moonglade and train/hand in at Nighthaven if that is all you need." },
     { t = "turnin", text = "Turn in to Bashana Runetotem", q = { 95664 }, qn = { [95664] = "Elder Knowledge" }, npc = "Bashana Runetotem", zone = "Thunder Bluff", m = 1456, x = 71.1, y = 34.2, ql = 31 },
     { t = "zone", text = "Travel to Desolace", zone = "Desolace", m = 1443, zoneName = "Desolace", tip = "Use your hearthstone (set to Shadowprey Village)." },
     { t = "accept", text = "Accept from Felgur Twocuts", q = { 1365 }, qn = { [1365] = "Khan Dez'hepah" }, npc = "Felgur Twocuts", zone = "Desolace", m = 1443, x = 56.2, y = 59.6, ql = 35 },
