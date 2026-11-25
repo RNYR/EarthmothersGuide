@@ -1,0 +1,28 @@
+## Interface: 16001
+## Title: |cff8fbf5aEarthmother's Guide|r
+## Notes: Earthmother's Guide - the 1-60 Tauren Druid leveling guide for WoW: Forever, with dungeon quests, druid class quests and a built-in arrow.
+## Author: Vard Ruun
+## Version: 1.0.0
+## Category: Quests
+## X-License: GPL-3.0-or-later
+## IconTexture: Interface\Icons\Ability_Druid_CatForm
+## SavedVariables: EarthmothersGuideDB
+## SavedVariablesPerCharacter: EarthmothersGuideCharDB
+
+Core.lua
+Arrow.lua
+Guide\Ch01_Mulgore.lua
+Guide\Ch02_Barrens.lua
+Guide\Ch03_Silverpine.lua
+Guide\Ch04_BarrensWC.lua
+Guide\Ch05_StonetalonAshenvaleNeedles.lua
+Guide\Ch06_HillsbradArathi.lua
+Guide\Ch07_StranglethornDesolace.lua
+Guide\Ch08_Riverglades.lua
+Guide\Ch09_TanarisFeralasShendralas.lua
+Guide\Ch10_DustwallowHinterlands.lua
+Guide\Ch11_UngoroFelwoodAzshara.lua
+Guide\Ch12_PlaguelandsWinterspring.lua
+UI.lua
+Items.lua
+Options.lua
