@@ -1,6 +1,6 @@
 -- Earthmother's Guide: hides Blizzard's quest tracker (under the minimap) while the guide is the
 -- primary quest list. Setting "Replace Blizzard's quest tracker" (on by default).
--- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+-- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 --
 -- On WoW: Forever the tracker (ObjectiveTrackerFrame) can be a protected frame:
 --   * its alpha may be changed any time, even in combat, so it is made invisible at once;

@@ -1,5 +1,5 @@
 -- Earthmother's Guide: step engine.
--- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+-- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 -- Chapters register their steps with ns.AddChapter(). The engine tracks the current step,
 -- checks completion against the live quest log, and advances automatically.
 
@@ -49,7 +49,15 @@ function ns.IsQuestInLog(id)
 end
 
 function ns.IsQuestReady(id)
-  return ns.IsQuestInLog(id) and call(QL.IsComplete, id) == true
+  if not ns.IsQuestInLog(id) then return false end
+  if call(QL.IsComplete, id) == true then return true end
+  -- a delivery quest (no objectives) is ready as soon as you have it, as Questie treats it
+  local n = call(QL.GetNumQuestObjectives, id)
+  return n == 0 and ns.logReady == true
+end
+
+function ns.IsQuestFailed(id)
+  return ns.IsQuestInLog(id) and call(QL.IsFailed, id) == true
 end
 
 function ns.GetObjectives(id)
@@ -58,7 +66,8 @@ function ns.GetObjectives(id)
 end
 
 function ns.PlayerLevel()
-  return (UnitLevel and UnitLevel("player")) or 1
+  -- PLAYER_LEVEL_UP carries the new level; UnitLevel can lag behind it for a moment
+  return math.max((UnitLevel and UnitLevel("player")) or 1, ns.levelUp or 0)
 end
 
 function ns.KnowsSpell(spellID)
@@ -172,8 +181,23 @@ local function skippedBeforeStart(step)
   return true
 end
 
+-- Travel, training, note, hearth, level and spell steps behind your real progress (the last
+-- quest you handed in or finished, per your quest history) are skipped, so jumping back a
+-- chapter (e.g. for a druid form quest) doesn't mean clicking through old travel steps.
+local NON_QUEST = { zone = true, train = true, note = true, bind = true, ["goto"] = true, level = true, spell = true }
+function ns.ProvenIndex()
+  if ns.provenGen ~= ns.questGen then
+    ns.provenGen = ns.questGen
+    ns.proven = ns.logReady and (ns.FindResumeIndex(1, #ns.steps, true) - 1) or 0
+  end
+  return ns.proven or 0
+end
+
 function ns.IsFiltered(step)
   local level = ns.PlayerLevel()
+  if NON_QUEST[step.t] and step.index and step.index < ns.ProvenIndex() then
+    return true
+  end
   -- optional pickup (a quest started by a looted item): only part of the route once you have it
   if step.opt and step.t == "accept" and not anyInLog(step) then
     for _, q in ipairs(step.q or {}) do if ns.IsQuestTurnedIn(q) then return false end end
@@ -197,9 +221,52 @@ end
 
 -- A profession quest is left out of the route when "Include profession quests" is off,
 -- unless you already have it in your log.
+-- Quests you chose to skip (the checkbox beside each quest on the panel). Remembered per
+-- character. A skipped quest is left out of the route: its pickup, "do" and hand-in steps
+-- stop waiting for it; the rest of the step carries on.
+function ns.IsSkipped(q)
+  local db = EarthmothersGuideCharDB
+  return db and db.skipped and db.skipped[q] == true or false
+end
+
+function ns.SetSkipped(q, skipped)
+  EarthmothersGuideCharDB = EarthmothersGuideCharDB or {}
+  EarthmothersGuideCharDB.skipped = EarthmothersGuideCharDB.skipped or {}
+  EarthmothersGuideCharDB.skipped[q] = skipped and true or nil
+  ns.manualMove = false
+  ns.Refresh()
+end
+
+function ns.ClearSkips()
+  if EarthmothersGuideCharDB then EarthmothersGuideCharDB.skipped = nil end
+  ns.Refresh()
+end
+
 function ns.QuestHidden(step, q)
+  if ns.IsSkipped(q) then return true end
+  if step.t == "accept" and ns.logReady and not ns.IsQuestInLog(q) and ns.PrereqLost(step, q) then
+    return true
+  end
   if not (step.prof and step.prof[q]) or ns.Setting("professions") then return false end
   return not ns.IsQuestInLog(q)
+end
+
+-- A quest whose prerequisite can no longer happen: the prerequisite is not done and not in your
+-- log, and the guide's step for picking it up is behind you or skipped (an optional item quest
+-- you never looted, a grey quest, one from before your start point).
+function ns.PrereqLost(step, q)
+  local pre = step.pre and step.pre[q]
+  if not pre then return false end
+  for _, p in ipairs(pre) do
+    if ns.IsQuestTurnedIn(p) or ns.IsQuestInLog(p) then return false end
+  end
+  for _, p in ipairs(pre) do
+    local ai = ns.acceptIndex and ns.acceptIndex[p]
+    if not ai then return false end                        -- not ours: can't tell, keep it
+    local ast = ns.steps[ai]
+    if ai >= (ns.index or 1) and not ns.IsFiltered(ast) then return false end
+  end
+  return true
 end
 
 -- Quests of a step that are part of the route for you right now.
@@ -308,15 +375,34 @@ end
 
 -- Where your quest history says you are: just after the last step it proves, within
 -- [from, to] (default: the whole route up to the level cap).
-function ns.FindResumeIndex(from, to)
+function ns.FindResumeIndex(from, to, strict)
   from = from or 1
   to = math.min(to or #ns.steps, ns.LevelCapIndex())
   local last = from - 1
   for i = from, to do
     local step = ns.steps[i]
-    if VERIFIABLE[step.t] and ns.IsStepDone(step) and ns.ProvesProgress(step) then last = i end
+    -- strict: only hand-ins and finished objectives count; a quest picked up early (whose
+    -- pickup step is far ahead) says nothing about where you are
+    if VERIFIABLE[step.t] and not (strict and step.t == "accept")
+       and ns.IsStepDone(step) and ns.ProvesProgress(step) then
+      last = i
+    end
   end
   return math.min(math.max(last + 1, from), math.max(#ns.steps, 1))
+end
+
+-- Never go past an unfinished quest you are carrying: the earliest unfinished "do" or hand-in
+-- step for a quest in your log, between `from` and `start`, wins.
+function ns.StepBackToCarried(from, start)
+  for i = from, start - 1 do
+    local st = ns.steps[i]
+    if (st.t == "complete" or st.t == "turnin") and st.q and not ns.IsStepDone(st) then
+      for _, q in ipairs(st.q) do
+        if ns.IsQuestInLog(q) then return i end
+      end
+    end
+  end
+  return start
 end
 
 -- First step of the chapter that fits the character's level (earliest chapter whose range holds it).
@@ -353,16 +439,7 @@ function ns.InitPosition(announce)
   -- Step back to the earliest unfinished quest you are carrying in the same chapter, so a quest
   -- already in your log (e.g. a class quest you started) is not jumped over.
   local first = ns.steps[start] and ns.steps[start].chapter.steps[1].index or start
-  for i = first, start - 1 do
-    local st = ns.steps[i]
-    if (st.t == "complete" or st.t == "turnin") and st.q and not ns.IsStepDone(st) then
-      local carrying = false
-      for _, q in ipairs(st.q) do
-        if ns.IsQuestInLog(q) then carrying = true break end
-      end
-      if carrying then start = i break end
-    end
-  end
+  start = ns.StepBackToCarried(first, start)
   ns.startIndex = start
   EarthmothersGuideCharDB = EarthmothersGuideCharDB or {}
   EarthmothersGuideCharDB.startIndex = start
@@ -411,7 +488,7 @@ end
 
 -- Quests you carry from this chapter that are not part of the current step and not finished:
 -- shown pinned under the step so nothing in your log is forgotten. No limit.
-function ns.Carrying()
+local function rawCarrying()
   local out, seen = {}, {}
   local cur = ns.Current()
   if not cur then return out end
@@ -430,11 +507,19 @@ function ns.Carrying()
   end
   return out
 end
-ns.AlsoHere = ns.Carrying
+function ns.Carrying(...)
+  -- cached per refresh: the panel and the settings page ask several times
+  local key = "_Carrying"
+  if ns[key .. "Gen"] == ns.fireGen and select("#", ...) == 0 then return ns[key] end
+  local r = rawCarrying(...)
+  if select("#", ...) == 0 then ns[key], ns[key .. "Gen"] = r, ns.fireGen end
+  return r
+end
+
 
 -- Finished quests in your log waiting to be handed in (other than the current step's), with
 -- who takes them and where, from the guide's turn-in steps. Nothing ready is ever invisible.
-function ns.ReadyToHandIn()
+local function rawReadyToHandIn()
   local out, seen = {}, {}
   local cur = ns.Current()
   for _, q in ipairs(cur and cur.q or {}) do seen[q] = true end
@@ -465,10 +550,18 @@ function ns.ReadyToHandIn()
   table.sort(out, function(a, b) return (a.step and a.step.index or 1e9) < (b.step and b.step.index or 1e9) end)
   return out
 end
+function ns.ReadyToHandIn(...)
+  -- cached per refresh: the panel and the settings page ask several times
+  local key = "_ReadyToHandIn"
+  if ns[key .. "Gen"] == ns.fireGen and select("#", ...) == 0 then return ns[key] end
+  local r = rawReadyToHandIn(...)
+  if select("#", ...) == 0 then ns[key], ns[key .. "Gen"] = r, ns.fireGen end
+  return r
+end
 
 -- Optional item-started quests you can run into in the zone you are in (this chapter), that you
 -- don't have yet: "Look out for: Hoof of Lakota'mani - starts Lakota'mani".
-function ns.LookOutFor()
+local function rawLookOutFor()
   local out = {}
   local cur = ns.Current()
   if not cur or not cur.zone then return out end
@@ -481,6 +574,14 @@ function ns.LookOutFor()
     end
   end
   return out
+end
+function ns.LookOutFor(...)
+  -- cached per refresh: the panel and the settings page ask several times
+  local key = "_LookOutFor"
+  if ns[key .. "Gen"] == ns.fireGen and select("#", ...) == 0 then return ns[key] end
+  local r = rawLookOutFor(...)
+  if select("#", ...) == 0 then ns[key], ns[key .. "Gen"] = r, ns.fireGen end
+  return r
 end
 
 -- On a pickup step: the quests of the batch that follows, so you can see what you are about
@@ -524,6 +625,8 @@ end
 -- Moves forward past finished or filtered steps. Never stops on a filtered step; stops on
 -- manual steps (note/train) so the player can read them.
 function ns.Advance()
+  -- before the quest log has loaded, "not in your log" means nothing: never move forward then
+  if not ns.logReady then ns.Fire() return end
   local i = ns.index or 1
   local moved = false
   while i <= #ns.steps do
@@ -543,7 +646,8 @@ function ns.Next()
   if (ns.index or 1) >= #ns.steps then return end   -- the last step has nothing after it
   local fromManual = ns.IsManual(ns.Current())
   local i = (ns.index or 1) + 1
-  while i < #ns.steps and ns.IsFiltered(ns.steps[i]) do i = i + 1 end
+  -- skip steps that are filtered out or already finished, so a skip never lands on an empty step
+  while i < #ns.steps and (ns.IsFiltered(ns.steps[i]) or ns.IsStepDone(ns.steps[i])) do i = i + 1 end
   if fromManual then
     -- continuing a note or training step is normal progress, not a manual jump: the guide
     -- keeps advancing on its own (and skips steps that are already finished)
@@ -568,7 +672,15 @@ end
 function ns.OnChange(fn) ns.listeners[#ns.listeners + 1] = fn end
 
 function ns.Fire()
-  for _, fn in ipairs(ns.listeners) do pcall(fn, ns.Current()) end
+  ns.fireGen = (ns.fireGen or 0) + 1
+  for _, fn in ipairs(ns.listeners) do
+    local ok, err = pcall(fn, ns.Current())
+    if not ok then
+      -- don't swallow errors: remember them (tests check this) and report them the normal way
+      ns.lastError = err
+      if geterrorhandler then pcall(geterrorhandler(), err) end
+    end
+  end
 end
 
 function ns.Refresh()
@@ -593,11 +705,23 @@ end
 
 -- Remove the Blizzard map pin the guide set (if any).
 function ns.ClearMapPin()
-  -- also clears a pin the guide left in a previous session (remembered per character)
+  -- only removes the pin if it is still the one the guide set (also one left from a previous
+  -- session); a pin you placed yourself is never touched
   local db = EarthmothersGuideCharDB
-  if (ns.pinSet or (db and db.pinSet)) and C_Map and C_Map.ClearUserWaypoint then call(C_Map.ClearUserWaypoint) end
+  local ours = ns.pinSet or (db and db.pinSet)
+  if ours and C_Map and C_Map.ClearUserWaypoint then
+    local mine = db and db.pinAt
+    local cur = C_Map.GetUserWaypoint and call(C_Map.GetUserWaypoint)
+    local same = true
+    if mine and cur and cur.position then
+      local x, y = cur.position.x, cur.position.y
+      if cur.position.GetXY then x, y = cur.position:GetXY() end
+      same = cur.uiMapID == mine[1] and math.abs((x or 0) - mine[2]) < 0.001 and math.abs((y or 0) - mine[3]) < 0.001
+    end
+    if same then call(C_Map.ClearUserWaypoint) end
+  end
   ns.pinSet = false
-  if db then db.pinSet = nil end
+  if db then db.pinSet, db.pinAt = nil, nil end
 end
 
 -- Blizzard map pin (user waypoint) at map coordinates 0-100.
@@ -611,6 +735,7 @@ function ns.SetMapPin(m, x, y)
       ns.pinSet = true
       EarthmothersGuideCharDB = EarthmothersGuideCharDB or {}
       EarthmothersGuideCharDB.pinSet = true
+      EarthmothersGuideCharDB.pinAt = { m, x / 100, y / 100 }
       -- don't take super-tracking away from a quest you chose to track yourself
       local tracked = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and call(C_SuperTrack.GetSuperTrackedQuestID)
       if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint and not (tracked and tracked ~= 0) then
@@ -633,7 +758,7 @@ ns.eventFrame = frame
 -- refresh the panel.
 local PROGRESS = {
   QUEST_ACCEPTED = true, QUEST_TURNED_IN = true, QUEST_REMOVED = true, PLAYER_LEVEL_UP = true,
-  HEARTHSTONE_BOUND = true, LEARNED_SPELL_IN_TAB = true, LEARNED_SPELL_IN_SKILL_LINE = true,
+  HEARTHSTONE_BOUND = true, LEARNED_SPELL_IN_TAB = true, LEARNED_SPELL_IN_SKILL_LINE = true, UNIT_LEVEL = true,
   ZONE_CHANGED_NEW_AREA = true,
 }
 local pending, clearManual = false, false
@@ -657,7 +782,7 @@ ns.schedule = schedule
 local events = {
   "PLAYER_ENTERING_WORLD", "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED", "QUEST_LOG_UPDATE",
   "UNIT_QUEST_LOG_CHANGED", "PLAYER_LEVEL_UP", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED",
-  "LEARNED_SPELL_IN_TAB", "LEARNED_SPELL_IN_SKILL_LINE", "SPELLS_CHANGED", "HEARTHSTONE_BOUND",
+  "LEARNED_SPELL_IN_TAB", "LEARNED_SPELL_IN_SKILL_LINE", "SPELLS_CHANGED", "HEARTHSTONE_BOUND", "UNIT_LEVEL",
 }
 
 -- The quest log is only trusted once it has really loaded: the first update after login can
@@ -665,9 +790,10 @@ local events = {
 -- world (or ten seconds at most). Until then, a quest missing from the log never counts as done.
 local enteredAt, logUpdates = nil, 0
 local function now() return GetTime and GetTime() or 0 end
+local needUpdates = 2   -- quest log updates to wait for: 2 after a fresh login, 1 after /reload
 local function noteLogUpdate()
   logUpdates = logUpdates + 1
-  if enteredAt and logUpdates >= 2 and now() - enteredAt >= 2 then ns.logReady = true end
+  if enteredAt and logUpdates >= needUpdates then ns.logReady = true end
 end
 local function whenLogReady(fn, tries)
   tries = tries or 0
@@ -691,9 +817,14 @@ function ns.OnEvent(_, event, arg1)
     ns.startIndex = EarthmothersGuideCharDB.startIndex
     return
   end
+  if event == "PLAYER_LEVEL_UP" and tonumber(arg1) then ns.levelUp = tonumber(arg1) end
+  if event == "UNIT_LEVEL" and arg1 ~= "player" then return end
   if event == "PLAYER_ENTERING_WORLD" and not ns.started then
     ns.started = true
     enteredAt = now()
+    -- PLAYER_ENTERING_WORLD(isInitialLogin, isReloadingUi): the first quest log update after a
+    -- fresh login can still be stale, so wait for two then; after /reload one is enough
+    needUpdates = (arg1 == true) and 2 or 1
     if ns.index then
       local manualSave = EarthmothersGuideCharDB.manual
       ns.SetIndex(ns.index, manualSave)
@@ -701,22 +832,28 @@ function ns.OnEvent(_, event, arg1)
       -- log has loaded, move forward if your quests prove you are further along - but only
       -- within this chapter and the next, and never over a place you chose by hand
       whenLogReady(function()
-        if manualSave then return end
+        if manualSave or ns.manualMove then return end   -- also respects a move made meanwhile
         local cur = ns.Current()
         local nextCh = cur and (ns.chapters[cur.chapter.num + 1] or cur.chapter)
-        local r = ns.FindResumeIndex(cur and cur.chapter.steps[1].index or 1, nextCh and nextCh.steps[#nextCh.steps].index)
-        if r > (ns.index or 1) then ns.SetIndex(r); ns.Advance() end
+        local r = ns.FindResumeIndex(cur and cur.chapter.steps[1].index or 1,
+                                     nextCh and nextCh.steps[#nextCh.steps].index, true)
+        r = ns.StepBackToCarried(ns.index or 1, r)
+        if r > (ns.index or 1) then ns.SetIndex(r) end
+        ns.Advance()
       end)
     else
       -- First run on this character (or saved data was lost): read quest history and level
       -- once the quest log has loaded.
       ns.index = 1
-      whenLogReady(function() ns.InitPosition(true) end)
+      whenLogReady(function() if not ns.manualMove then ns.InitPosition(true) end end)
       return
     end
   end
   if event == "UNIT_QUEST_LOG_CHANGED" and arg1 ~= "player" then return end
   if event == "QUEST_LOG_UPDATE" then noteLogUpdate() end
+  if event == "QUEST_TURNED_IN" or event == "QUEST_ACCEPTED" or event == "QUEST_REMOVED" or event == "QUEST_LOG_UPDATE" then
+    ns.questGen = (ns.questGen or 0) + 1
+  end
   schedule(event)
 end
 

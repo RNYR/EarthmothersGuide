@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+# Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 """Level simulation for the route, from real WoW: Forever quest XP.
 
 Quest XP: QuestieDB's Forever XP traces (aggregated from real Forever sessions), falling back to
@@ -19,6 +19,10 @@ MAX_LEVEL = 60
 # Kill XP on top of quest XP while questing (the mobs you kill for objectives and on the way).
 # Not in any database: 0.0 gives the hard lower bound, 0.4 a typical questing estimate.
 KILL_SHARE = 0.4
+
+# Kill XP from one full run of a leveling dungeon, as a share of the level you are at (an
+# assumption, like KILL_SHARE; the dungeon's quest XP is counted separately from real data).
+DUNGEON_RUN_LEVEL = 0.5
 
 
 def load_quest_xp(qdb_dir):
@@ -51,6 +55,17 @@ def adjusted_xp(base_xp, quest_level, char_level):
     return int(xp)
 
 
+def grey_level(char_level):
+    """Highest quest level that is grey (gives reduced XP) for a character - Classic's rule."""
+    if char_level <= 5:
+        return 0
+    if char_level <= 39:
+        return char_level - 5 - char_level // 10
+    if char_level <= 59:
+        return char_level - 1 - char_level // 5
+    return char_level - 9
+
+
 class Character:
     """A simulated character walking the route."""
 
@@ -77,10 +92,15 @@ class Character:
                 self.xp += amount
                 amount = 0
 
+    def run_dungeon(self):
+        """Kill XP from clearing a dungeon at about its level."""
+        if self.level < MAX_LEVEL:
+            self.gain(int(DUNGEON_RUN_LEVEL * XP_TO_NEXT[self.level]))
+
     def turn_in(self, qid):
         """Hand in a quest; returns (xp gained, was it grey)."""
         lvl, base = self.quest_xp.get(qid, (0, 0))
         got = adjusted_xp(base, lvl, self.level)
-        grey = lvl > 0 and lvl <= self.level - 6
+        grey = lvl > 0 and lvl <= grey_level(self.level)
         self.gain(int(got * (1 + self.kill_share)))
         return got, grey

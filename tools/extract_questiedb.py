@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+# Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 """Decode QuestieDB Forever baked TOC metadata into JSON (quests, npcs, objects).
 Usage: python3 -I extract.py <QuestieDB_Forever.toc> <out.json>
 """

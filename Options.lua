@@ -1,5 +1,5 @@
 -- Earthmother's Guide: settings page (Esc > Options > AddOns > Earthmother's Guide).
--- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+-- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 -- Options at the top, route browser below: chapters on the left, that chapter's zones and
 -- steps on the right. Click a step to jump there. Mouse wheel scrolls the step list.
 
@@ -18,9 +18,10 @@ local ROWS, ROW_H = 17, 16
 ----------------------------------------------------------------------------------------------
 local function questNames(step)
   local names = {}
-  for _, q in ipairs(ns.StepQuests(step)) do
+  for _, q in ipairs(step.q or {}) do
     local prof = step.prof and step.prof[q]
-    names[#names + 1] = ((step.qn and step.qn[q]) or ("Quest " .. q)) .. (prof and c(C.dim, " (" .. prof .. ")") or "")
+    local skipped = ns.IsSkipped(q) and c(C.dim, " (skipped)") or ""
+    names[#names + 1] = ((step.qn and step.qn[q]) or ("Quest " .. q)) .. (prof and c(C.dim, " (" .. prof .. ")") or "") .. skipped
   end
   return table.concat(names, ", ")
 end
@@ -149,7 +150,7 @@ local function buildPage(parent, name)
 
   local title = label(p, c(C.title, "Earthmother's Guide"), "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", 16, -14)
-  local sub = label(p, c(C.dim, "1-60 Tauren Druid route for WoW: Forever. Click the guide panel to continue notes; right-click it to open this page."))
+  local sub = label(p, c(C.dim, "1-60 Tauren Druid route for WoW: Forever. Tick the box beside a quest on the panel to skip it, or Done to continue a note; right-click the panel to open this page."))
   sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
 
   -- Options ------------------------------------------------------------------------------

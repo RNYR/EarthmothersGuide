@@ -1,5 +1,5 @@
 -- Offline tests: luajit tests/run.lua (from the addon folder).
--- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+-- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 -- Loads the addon files listed in the .toc against a mocked WoW API and checks the engine.
 
 local failures, passed = 0, 0
@@ -327,6 +327,7 @@ for _, st in ipairs(ns.chapters[2].steps) do
   if st.t == "complete" and st ~= batchStep and st.q and not st.cls then other = st break end
 end
 state.log[other.q[1]] = true
+ns.Fire()   -- in game, every quest log change triggers a refresh
 local carried = ns.Carrying()
 local found = false
 for _, e in ipairs(carried) do if e.id == other.q[1] then found = true end end
@@ -702,6 +703,7 @@ do
   for _, e in ipairs(ns.LookOutFor()) do if e.id == q then found = true end end
   check(found, "optional pickup listed under Look out for in its zone (" .. tostring(opt.npc) .. ")")
   state.log[q] = true
+  ns.Fire()
   check(not ns.IsFiltered(opt), "once looted (quest in log), the pickup is part of the route")
   local gone = true
   for _, e in ipairs(ns.LookOutFor()) do if e.id == q then gone = false end end
@@ -725,6 +727,199 @@ do
     end
   end
   check(grinds > 0 and grinds < 20, "a handful of short grinds where quests run out (" .. grinds .. ")")
+end
+
+------------------------------------------------------------------------------ per-quest skip checkboxes
+do
+  local panel = _G.EarthmothersGuideFrame
+  ns.logReady = true; ns.startIndex = nil
+  state.level, state.log, state.ready, state.done = 14, {}, {}, {}
+  local batch
+  for _, st in ipairs(ns.chapters[2].steps) do if st.t == "complete" and #st.q >= 3 then batch = st break end end
+  for _, q in ipairs(batch.q) do state.log[q] = true end
+  ns.SetIndex(batch.index, true)
+  local rows = {}
+  for _, r in ipairs(panel.rows) do if r.used and r.spec.q then rows[#rows + 1] = r end end
+  check(#rows == #batch.q, ("one checkbox row per quest in the batch (%d of %d)"):format(#rows, #batch.q))
+  -- finish all but one quest, then skip that one with its checkbox
+  for i = 2, #batch.q do state.ready[batch.q[i]] = true end
+  check(not ns.IsStepDone(batch), "batch waits for the last open quest")
+  local last = rows[1]
+  last.check.GetChecked = function() return true end
+  last.check.scripts.OnClick(last.check)
+  check(ns.IsSkipped(batch.q[1]), "ticking the box skips that quest")
+  check(ns.IsStepDone(batch), "the batch no longer waits for the skipped quest")
+  check(ns.index > batch.index, "the guide moves on")
+  -- its hand-in no longer waits either
+  for _, st in ipairs(ns.steps) do
+    if st.t == "turnin" and st.index > batch.index then
+      for _, q in ipairs(st.q) do
+        if q == batch.q[1] then
+          ns.SetIndex(st.index, true)
+          check(ns.IsFiltered(st) or ns.IsStepDone(st), "the skipped quest's hand-in step does not wait for it")
+        end
+      end
+    end
+  end
+  -- untick brings it back; /emg unskip clears all
+  ns.SetSkipped(batch.q[1], false)
+  check(not ns.IsSkipped(batch.q[1]), "unticking puts the quest back")
+  ns.SetSkipped(batch.q[2], true)
+  SlashCmdList.EARTHMOTHERSGUIDE("unskip")
+  check(not ns.IsSkipped(batch.q[2]), "/emg unskip clears every skip")
+  state.log, state.ready = {}, {}
+end
+
+------------------------------------------------------------------------------ third review: engine
+do
+  -- listener (render) errors are recorded, not swallowed
+  ns.lastError = nil
+  ns.SetIndex(ns.chapters[3].steps[5].index, true)
+  check(ns.lastError == nil, "rendering raised no error: " .. tostring(ns.lastError))
+
+  -- clicking the panel: real cursor positions, left-click continues a note, right-click opens settings
+  local cx, cy = 400, 300
+  GetCursorPosition = function() return cx, cy end
+  local panel = _G.EarthmothersGuideFrame
+  local note
+  for _, st in ipairs(ns.steps) do if st.t == "note" and st.index < #ns.steps then note = st break end end
+  ns.logReady = true
+  ns.SetIndex(note.index, true)
+  local ok1, e1 = pcall(panel.scripts.OnMouseDown, panel, "LeftButton")
+  local ok2, e2 = pcall(panel.scripts.OnMouseUp, panel, "LeftButton")
+  check(ok1 and ok2, "clicking the panel does not error: " .. tostring(e1 or e2))
+  check(ns.index == note.index, "a plain click on the panel no longer moves the guide")
+  -- the Done checkbox continues a note
+  local row = panel.rows[1]
+  check(row and row.used and row.spec and row.spec.done, "a note shows a Done checkbox")
+  row.check.scripts.OnClick(row.check)
+  check(ns.index > note.index, "ticking Done continues the note")
+  local opened = false
+  local realOpen = ns.OpenOptions
+  ns.OpenOptions = function() opened = true end
+  panel.scripts.OnMouseDown(panel, "RightButton")
+  panel.scripts.OnMouseUp(panel, "RightButton")
+  check(opened, "right-click opens the settings")
+  -- a drag is not a click
+  ns.SetIndex(note.index, true)
+  panel.scripts.OnMouseDown(panel, "LeftButton")
+  cx = cx + 40
+  panel.scripts.OnMouseUp(panel, "LeftButton")
+  check(ns.index == note.index, "dragging the panel does not continue the note")
+  ns.OpenOptions = realOpen
+  GetCursorPosition = nil
+
+  -- before the quest log has loaded, the guide never moves forward
+  state.level, state.log, state.ready, state.done = 21, {}, {}, {}
+  local ti
+  for _, st in ipairs(ns.chapters[2].steps) do if st.t == "turnin" and not st.cls then ti = st break end end
+  ns.logReady = false
+  ns.SetIndex(ti.index, false)
+  ns.Advance()
+  check(ns.index == ti.index, "with the quest log not loaded yet, the guide stays put")
+  ns.logReady = true
+
+  -- login catch-up does not jump over an open batch because of a quest picked up early
+  local batch
+  for _, st in ipairs(ns.chapters[2].steps) do if st.t == "complete" and #st.q >= 3 then batch = st break end end
+  local laterAcc
+  for _, st in ipairs(ns.chapters[2].steps) do
+    if st.t == "accept" and st.index > batch.index + 10 and not st.opt then laterAcc = st break end
+  end
+  state.level = 14
+  state.log = {}
+  for _, q in ipairs(batch.q) do state.log[q] = true end
+  for _, q in ipairs(laterAcc.q) do state.log[q] = true end
+  local r = ns.FindResumeIndex(ns.chapters[2].steps[1].index, ns.chapters[3].steps[#ns.chapters[3].steps].index, true)
+  r = ns.StepBackToCarried(batch.index, r)
+  check(r <= batch.index, ("catch-up stays on the open batch (%d vs batch %d)"):format(r, batch.index))
+  state.log = {}
+
+  -- a pickup whose prerequisite can no longer happen is skipped
+  local follow, preStep
+  for _, st in ipairs(ns.steps) do
+    if st.t == "accept" and st.pre and not st.opt then
+      for q, pre in pairs(st.pre) do
+        local ai = ns.acceptIndex[pre[1]]
+        if ai and ai < st.index and #st.q == 1 then follow, preStep = st, ns.steps[ai] break end
+      end
+    end
+    if follow then break end
+  end
+  check(follow ~= nil, "found a follow-up pickup with a prerequisite")
+  state.level = follow.ql or 20
+  state.done, state.log = {}, {}
+  ns.SetIndex(follow.index, true)
+  check(ns.IsFiltered(follow), "follow-up skipped when its prerequisite was never done (" .. follow.text .. ")")
+  for _, p in ipairs(follow.pre[follow.q[1]]) do state.done[p] = true end
+  check(not ns.IsFiltered(follow), "follow-up offered once its prerequisite is done")
+  state.done = {}
+end
+
+------------------------------------------------------------------------------ third review: lower items
+do
+  ns.logReady = true; ns.startIndex = nil
+  state.level, state.log, state.ready, state.done = 20, {}, {}, {}
+  -- "Skip this step" from a pickup never lands on a step that is already finished
+  local acc
+  for _, st in ipairs(ns.chapters[2].steps) do
+    local nx = ns.steps[st.index + 1]
+    if st.t == "accept" and nx and nx.t == "complete" and not st.cls and not st.opt then acc = st break end
+  end
+  ns.SetIndex(acc.index, true)
+  ns.Next()
+  check(not ns.IsStepDone(ns.Current()), "Skip lands on a step that still has something to do (" .. ns.Current().t .. ")")
+
+  -- after jumping back a chapter, old travel/training/note steps are skipped
+  state.level = 25
+  for _, st in ipairs(ns.steps) do
+    if st.chapter.num <= 4 and st.t == "turnin" then for _, q in ipairs(st.q) do state.done[q] = true end end
+  end
+  ns.questGen = (ns.questGen or 0) + 1
+  ns.GotoChapter(1)
+  local stops, nonQuest = 0, 0
+  local guard = 0
+  while ns.Current().chapter.num < 5 and guard < 400 do
+    guard = guard + 1
+    local cur = ns.Current()
+    if not ns.IsFiltered(cur) and not ns.IsStepDone(cur) then
+      stops = stops + 1
+      if not cur.q then nonQuest = nonQuest + 1 end
+    end
+    ns.SetIndex(ns.index + 1, true)
+  end
+  check(nonQuest <= 3, "jumping back to chapter 1 does not stop on old travel/training steps (" .. nonQuest .. ")")
+  state.done = {}
+  ns.questGen = ns.questGen + 1
+
+  -- a delivery quest (no objectives) counts as ready once you have it
+  local realN = C_QuestLog.GetNumQuestObjectives
+  C_QuestLog.GetNumQuestObjectives = function() return 0 end
+  state.log[777777] = true
+  check(ns.IsQuestReady(777777), "a delivery quest in your log is ready to hand in")
+  C_QuestLog.GetNumQuestObjectives = realN
+  state.log = {}
+
+  -- the guide never clears a map pin you set yourself
+  local cleared = false
+  C_Map.ClearUserWaypoint = function() cleared = true end
+  EarthmothersGuideCharDB.pinSet = true
+  EarthmothersGuideCharDB.pinAt = { 1412, 0.40, 0.70 }
+  C_Map.GetUserWaypoint = function() return { uiMapID = 1413, position = { x = 0.5, y = 0.5 } } end
+  ns.ClearMapPin()
+  check(not cleared, "a map pin you placed yourself is left alone")
+  EarthmothersGuideCharDB.pinSet = true
+  EarthmothersGuideCharDB.pinAt = { 1412, 0.40, 0.70 }
+  C_Map.GetUserWaypoint = function() return { uiMapID = 1412, position = { x = 0.40, y = 0.70 } } end
+  ns.ClearMapPin()
+  check(cleared, "the guide's own pin is cleared")
+  C_Map.GetUserWaypoint = nil
+
+  -- level-up is noticed at once (PLAYER_LEVEL_UP carries the new level)
+  state.level = 17
+  fire("PLAYER_LEVEL_UP", 18)
+  check(ns.PlayerLevel() == 18, "level-up is noticed before UnitLevel catches up")
+  ns.levelUp = nil
 end
 
 print(("%d passed, %d failed, %d steps"):format(passed, failures, count))

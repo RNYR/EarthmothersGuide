@@ -1,5 +1,5 @@
 -- Earthmother's Guide: quest item button.
--- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+-- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 -- When a quest in the current step has a usable quest item (the kind the quest log shows a
 -- button for), a button appears under the guide panel. Click it to use the item.
 -- It is a secure button, so it can only be shown, moved or changed out of combat; changes
@@ -88,7 +88,12 @@ function ns.UpdateItemButton()
   local panel = _G.EarthmothersGuideFrame
   local panelShown = panel and panel:IsShown() and ns.Setting("shown") ~= false
   if ns.Setting("itemButton") and panelShown and step and step.q then
-    for _, q in ipairs(step.q) do
+    -- the quest the arrow is leading to comes first
+    local order = {}
+    local target = panel and panel.arrowQuest
+    if target then order[1] = target end
+    for _, q in ipairs(step.q) do if q ~= target then order[#order + 1] = q end end
+    for _, q in ipairs(order) do
       if ns.IsQuestInLog(q) and not ns.IsQuestReady(q) then
         link, icon = questItem(q)
         if link then quest = q break end

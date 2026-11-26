@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+# Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 """Generate Guide/ChNN_*.lua from the route spec (route.py) and decoded QuestieDB Forever data.
 
 Usage:
@@ -221,19 +221,60 @@ def objective_points(q, areas):
     return None
 
 
+def main_giver(start, areas):
+    """The quest giver to use: not an Alliance NPC, preferably one standing in `areas`."""
+    gs = [g for g in givers(start)
+          if not (g[0] == 'n' and (N.get(str(g[1])) or {}).get('friendly') == 'A')]
+    if not gs:
+        return None
+    here = [g for g in gs if any(p[0] in areas for p in g[3])]
+    return (here or gs)[0]
+
+
 def horde_ok(q, areas):
     """The quest starts at a Horde-friendly giver somewhere a Tauren can reach."""
-    gs = givers(q.get('start'))
-    if not gs:
+    g = main_giver(q.get('start'), set(route.ALL_AREAS) | set(areas))
+    if not g:
         return False
-    kind, gid, name, pts = gs[0]
-    if kind == 'n' and (N.get(str(gid)) or {}).get('friendly') == 'A':
-        return False
+    kind, gid, name, pts = g
     for fkind, fid, _fname, _fpts in givers(q.get('end')):
         if fkind == 'n' and (N.get(str(fid)) or {}).get('friendly') == 'A':
             return False  # handed in to an Alliance NPC: the Alliance version of a quest
     reach = set(route.ALL_AREAS) | set(areas)
     return any(p[0] in reach for p in pts)
+
+
+def objective_spawns(q):
+    """All spawn points of a quest's objective creatures, objects and item sources (instance
+    spawns have no coordinates)."""
+    obj = q.get('objectives')
+    if isinstance(obj, dict):
+        obj = [obj.get(str(k)) for k in range(1, 7)]
+    pts = []
+    for idx, group in enumerate((obj or [])[:3]):
+        for entry in group or []:
+            if not isinstance(entry, list) or not entry:
+                continue
+            if idx == 0:
+                e = N.get(str(entry[0])); pts += spawn_points(e) if e else []
+            elif idx == 1:
+                e = O.get(str(entry[0])); pts += spawn_points(e) if e else []
+            else:
+                it = I.get(str(entry[0])) or {}
+                for nid in (it.get('npcDrops') or [])[:12]:
+                    e = N.get(str(nid)); pts += spawn_points(e) if e else []
+                for oid in (it.get('objectDrops') or [])[:12]:
+                    e = O.get(str(oid)); pts += spawn_points(e) if e else []
+    return pts
+
+
+def dungeon_only(q):
+    pts = objective_spawns(q)
+    return bool(pts) and all(p[1] is None for p in pts)
+
+
+def instance_areas(q):
+    return {p[0] for p in objective_spawns(q) if p[1] is None}
 
 
 def has_objectives(q):
@@ -287,6 +328,8 @@ class Builder:
         self.char = xpsim.Character(QUEST_XP)   # simulated character (real Forever quest XP)
         self.deferred = {}      # zone -> quests skipped because the character was too low
         self.grinds = 0         # "grind to level N" steps added
+        self.grind_xp = 0       # XP those grinds stand for
+        self.chain_quests = set()   # class quests: handed in by their own steps, never by a sweep
 
     # ------------------------------------------------------------------ exclusive quests
     def on_accept(self, qid):
@@ -346,6 +389,24 @@ class Builder:
         steps.append(s)
         self.area = area
         self.turnins(steps, {area})
+
+    def move_to(self, steps, area, inside=None):
+        """A travel step when the next pickup or hand-in is in another zone (not inside the
+        dungeon you are running)."""
+        if area is None or area == self.area or (inside and area in inside):
+            return
+        if area not in AREA_TO_MAP and area not in route.ALL_AREAS:
+            return
+        s = dict(t='zone', text='Travel to ' + ZONE_NAMES.get(area, str(area)),
+                 zoneName=ZONE_NAMES.get(area), zone=ZONE_NAMES.get(area))
+        if AREA_TO_MAP.get(area):
+            s['m'] = AREA_TO_MAP[area]
+        tip = self.travel_tip(area)
+        if tip:
+            s['tip'] = tip
+        self.rep_tip(s, area)
+        steps.append(s)
+        self.area = area
 
     def rep_tip(self, s, area):
         """Attach a tip that replaces the normal one once you have a reputation standing."""
@@ -409,6 +470,7 @@ class Builder:
         up quests from givers outside (before the run); quests from givers inside the instance
         (follow-ups, givers that appear after a boss) come in later rounds, during the run."""
         pool = [p for p in pool if p not in self.used and p not in self.done and p not in self.blocked]
+        self._inside = inside
         extra = {}
         if dungeon:
             extra = {'d': dungeon[0], 'dmin': dungeon[1], 'dmax': dungeon[2]}
@@ -429,6 +491,7 @@ class Builder:
                         steps.append(dict(t='level', lvl=target,
                                           text=f'Grind to level {target}: kill mobs around here before the next quests.',
                                           tip='Mobs your level or a little higher give the most XP; a dungeon run also works.'))
+                        self.grind_xp += sum(xpsim.XP_TO_NEXT[k] for k in range(self.char.level, target)) - self.char.xp
                         self.char.level, self.char.xp = target, 0
                         self.grinds += 1
                         now = [p for p in ready if need(p) <= self.char.level]
@@ -448,10 +511,10 @@ class Builder:
             # --- accept, grouped by questgiver
             by_giver = {}
             for qid in ready:
-                gs = givers(Q[str(qid)].get('start'))
-                if not gs:
+                g = main_giver(Q[str(qid)].get('start'), areas)
+                if not g:
                     continue
-                kind, gid, gname, pts = gs[0]
+                kind, gid, gname, pts = g
                 pt = best_point(pts, areas, self.pos)
                 by_giver.setdefault((kind, gid, gname), {'pt': pt, 'q': []})['q'].append(qid)
             if not by_giver:
@@ -459,6 +522,8 @@ class Builder:
             ordered, self.pos = greedy([(k, v['pt']) for k, v in by_giver.items()], self.pos)
             for (kind, gid, gname), pt in ordered:
                 qs = sorted(by_giver[(kind, gid, gname)]['q'], key=lambda i: (Q[str(i)].get('level') or 0, i))
+                if pt and kind != 'i':
+                    self.move_to(steps, pt[0], inside)
                 if kind == 'i':
                     # an item that starts a quest: optional - never blocks the route; the panel
                     # lists it under "Look out for" while you are in its zone
@@ -509,6 +574,7 @@ class Builder:
             # after the run: hand in outside, nearest first
             for zone_set in turnin_order:
                 self.turnins(steps, zone_set, extra, only=set(pool))
+        self._inside = None
         return steps
 
     def turnins(self, steps, areas, extra=None, only=None, box=None):
@@ -516,6 +582,8 @@ class Builder:
         by_fin = {}
         for qid, fin in list(self.pending.items()):
             if only is not None and qid not in only:
+                continue
+            if qid in self.chain_quests:
                 continue
             if fin is None:
                 continue
@@ -531,6 +599,8 @@ class Builder:
         ordered, self.pos = greedy([(k, v['pt']) for k, v in by_fin.items()], self.pos)
         for key, pt in ordered:
             qs = sorted(by_fin[key]['q'])
+            if pt:
+                self.move_to(steps, pt[0], getattr(self, '_inside', None))
             step_extra = dict(extra)
             steps.append(dict(t='turnin', q=qs, npc=key[2], text='Turn in to ' + key[2],
                               **self.loc_fields(pt), **step_extra))
@@ -563,8 +633,11 @@ class Builder:
             lvl = q.get('level') or 0
             if lvl < 1 or not (lo <= lvl <= hi) or (q.get('reqLevel') or 0) > hi:
                 continue
-            if not gs or not any(p[0] in giver_areas for p in gs[0][3]):
+            g = main_giver(q.get('start'), giver_areas)
+            if not g or not any(p[0] in giver_areas for p in g[3]):
                 continue
+            if dungeon_only(q):
+                continue   # its objectives are only inside an instance: the dungeon block does it
             box = seg.get('box')
             if box and not any(p[0] in areas and box[0] <= p[1] <= box[2] and box[1] <= p[2] <= box[3]
                                for p in gs[0][3]):
@@ -631,6 +704,10 @@ class Builder:
                                       and int(k) not in route.EXCLUDE)
                     dzp = {parent(z) for z in dz} | dz
                     near = dzp | set(seg.get('turnin_zones', [])) | set(seg.get('giver_zones', []))
+                    if dzp:
+                        # quests sorted under an open zone whose objectives are only in this dungeon
+                        ids += sorted(int(k) for k, q in Q.items()
+                                      if int(k) not in route.EXCLUDE and dungeon_only(q) and instance_areas(q) & dzp)
 
                     def dungeon_ok(i):
                         q = Q.get(str(i))
@@ -639,7 +716,7 @@ class Builder:
                         if not exists_on_forever(i):
                             return False
                         lvl = q.get('level') or 0
-                        if lvl > hi + 2 or (q.get('reqLevel') or 0) > hi:
+                        if lvl > hi or (q.get('reqLevel') or 0) > hi:
                             return False  # too high for this run
                         gs = givers(q.get('start'))
                         # picked up near the dungeon (or inside it), not in a faraway city
@@ -654,6 +731,8 @@ class Builder:
                     dareas = set(seg.get('turnin_zones', [])) | dzp
                     order = [dzp] + [{z} for z in seg.get('turnin_zones', [])]
                     self.quest_block(steps, pool, near | dzp, dungeon=(name, lo, hi), turnin_order=order[1:], inside=dzp)
+                    if any(st.get('d') == name and st.get('t') == 'complete' for st in steps):
+                        self.char.run_dungeon()   # the run's kill XP (an assumption, see xp.py)
                 elif kind == 'chain':
                     # hand-written ordered steps with explicit quest IDs
                     for st in seg['steps']:
@@ -662,13 +741,23 @@ class Builder:
                         missing = [q for q in s.get('q', []) if str(q) not in Q]
                         if missing:
                             raise SystemExit(f"chain step uses quest(s) not in the database: {missing}")
+                        prefer = s.pop('prefer', None)
+                        if s['t'] == 'accept':
+                            need = max((Q[str(q)].get('reqLevel') or 0) for q in s['q'])
+                            if need > self.char.level:
+                                steps.append(dict(t='level', lvl=need,
+                                                  text=f'Reach level {need} for the next druid quest: keep questing, or grind a little.'))
+                                self.char.level, self.char.xp = need, 0
                         if s['t'] in ('accept', 'turnin') and 'npc' not in s:
                             q = Q[str(s['q'][0])]
-                            g = givers(q.get('start' if s['t'] == 'accept' else 'end'))
-                            if g:
-                                pt = best_point(g[0][3], set(route.HUB_AREAS), self.pos)
-                                s.update(npc=g[0][2], **self.loc_fields(pt))
-                                s.setdefault('text', ('Accept from ' if s['t'] == 'accept' else 'Turn in to ') + g[0][2])
+                            gs = givers(q.get('start' if s['t'] == 'accept' else 'end'))
+                            if prefer:
+                                gs = [g for g in gs if any(p[0] == prefer for p in g[3])] or gs
+                            if gs:
+                                g = gs[0]
+                                pt = best_point(g[3], {prefer} if prefer else set(route.HUB_AREAS), self.pos)
+                                s.update(npc=g[2], **self.loc_fields(pt))
+                                s.setdefault('text', ('Accept from ' if s['t'] == 'accept' else 'Turn in to ') + g[2])
                         if s['t'] == 'complete':
                             s.setdefault('text', short_obj(Q[str(s['q'][0])]) or qname(s['q'][0]))
                         if s['t'] == 'complete' and 'x' not in s:
@@ -683,6 +772,9 @@ class Builder:
                         for qid in s.get('q', []):
                             if s['t'] == 'accept':
                                 self.on_accept(qid)
+                                fin = givers(Q[str(qid)].get('end'))
+                                self.pending[qid] = fin[0] if fin else None   # counts toward the log
+                                self.chain_quests.add(qid)   # handed in only by its own chain step
                             self.used.add(qid)
                             if s['t'] == 'turnin':
                                 self.done.add(qid); self.pending.pop(qid, None)
@@ -752,6 +844,11 @@ class Builder:
                     s['q'] = [q for q in s['q'] if q not in drop]
                     if not s['q']:
                         continue
+                    for key in ('pts', 'obj', 'pre', 'prof'):
+                        if isinstance(s.get(key), dict):
+                            s[key] = {q: v for q, v in s[key].items() if q not in drop} or None
+                            if s[key] is None:
+                                del s[key]
                 keep.append(s)
             steps[:] = keep
 
@@ -771,7 +868,7 @@ class Builder:
             lines = ["-- Earthmother's Guide - generated by tools/gen.py from tools/route.py. Do not edit by hand.",
                      '-- Quest/NPC/coordinate data derived from QuestieDB v1.1.5 (Questie contributors), used under',
                      '-- GPL-3.0; modified (filtered, ordered, reformatted). Names and quest text (c) Blizzard Entertainment.',
-                     "-- Copyright (C) 2026 Vard Ruun. Earthmother's Guide is licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.",
+                     "-- Copyright (C) 2026 Vard Ruun. Earthmother's Guide is licensed under GPL-3.0-only; see LICENSE and NOTICE.md.",
                      'local _, ns = ...', 'ns = ns or _G.EarthmothersGuide', '',
                      f'ns.AddChapter({num}, {{',
                      f'  title = {lua(ch["title"])},',
@@ -781,6 +878,17 @@ class Builder:
                 if s.get('q'):
                     s['qn'] = {q: qname(q) for q in s['q']}
                     s['ql'] = max((Q[str(q)].get('level') or 0) for q in s['q'])
+                    if s.get('t') == 'accept':
+                        # prerequisites, so the addon can skip a pickup whose prerequisite can no
+                        # longer happen (an optional quest never looted, a grey or skipped quest)
+                        pre = {}
+                        for q in s['q']:
+                            qq = Q.get(str(q)) or {}
+                            ids = list(qq.get('preSingle') or []) + list(qq.get('preGroup') or [])
+                            if ids:
+                                pre[q] = ids
+                        if pre:
+                            s['pre'] = pre
                     prof = {q: route.PROFESSION[q] for q in s['q'] if q in route.PROFESSION}
                     if prof:
                         s['prof'] = prof
@@ -791,7 +899,7 @@ class Builder:
         return names
 
 
-KEY_ORDER = ['t', 'text', 'q', 'qn', 'npc', 'zone', 'm', 'x', 'y', 'zoneName', 'lvl', 'spell', 'd', 'dmin', 'dmax', 'ql', 'cls', 'pts', 'obj', 'prof', 'bind', 'opt', 'tip', 'tipRep', 'radius']
+KEY_ORDER = ['t', 'text', 'q', 'qn', 'npc', 'zone', 'm', 'x', 'y', 'zoneName', 'lvl', 'spell', 'd', 'dmin', 'dmax', 'ql', 'cls', 'pts', 'obj', 'prof', 'pre', 'bind', 'opt', 'tip', 'tipRep', 'radius']
 
 
 def lua(v):
@@ -818,8 +926,8 @@ def lua(v):
 if __name__ == '__main__':
     b = Builder()
     b.build()
-    for _pass in range(3):
-        if not b.dropped:
+    for _pass in range(4):
+        if not set(b.dropped) - set(route.EXCLUDE):
             break
         # quests the route would pick up but never hand in: leave them out entirely and rebuild,
         # so they neither clutter the route nor take quest log space
@@ -851,32 +959,41 @@ if __name__ == '__main__':
     if peak > LOG_CAP:
         raise SystemExit(f'quest log goes over {LOG_CAP} ({peak})')
     # --- simulated level along the route, from real Forever quest XP
-    QXP = xpsim.load_quest_xp(QDB_DIR)
-    report = {}
-    for share in (0.0, xpsim.KILL_SHARE):
+    QXP = QUEST_XP
+    def walk(share, with_grinds):
         char = xpsim.Character(QXP, share)
         rows = []
         for ch, steps in b.chapters:
-            start = char.exact
-            hard = grey = 0
+            start, hard, grey, grind = char.exact, 0, 0, 0
+            runs = set()
             for st in steps:
-                if st.get('t') == 'level' and share == xpsim.KILL_SHARE and (st.get('lvl') or 0) > char.level:
-                    char.level, char.xp = st['lvl'], 0      # the grind the route asks for
+                if share and st.get('d') and st.get('t') == 'complete' and st['d'] not in runs:
+                    runs.add(st['d'])
+                    char.run_dungeon()
+                if with_grinds and st.get('t') == 'level' and (st.get('lvl') or 0) > char.level:
+                    grind += sum(xpsim.XP_TO_NEXT[k] for k in range(char.level, st['lvl'])) - char.xp
+                    char.level, char.xp = st['lvl'], 0
                 if st.get('t') == 'accept' and not st.get('opt'):
-                    for q in st['q']:
-                        if (Q[str(q)].get('reqLevel') or 0) > char.level:
-                            hard += 1
+                    hard += sum(1 for q in st['q'] if (Q[str(q)].get('reqLevel') or 0) > char.level)
                 if st.get('t') == 'turnin':
                     for q in st['q']:
-                        _got, was_grey = char.turn_in(q)
-                        grey += was_grey
-            rows.append((ch['title'], ch['levels'], round(start, 1), round(char.exact, 1), hard, grey))
-        report[share] = rows
-    print('\nSimulated level by chapter (real Forever quest XP; kills modelled as a share on top):')
-    print(f"{'chapter':48} {'label':>7} {'quests only':>13} {'+' + str(int(xpsim.KILL_SHARE * 100)) + '% kills':>13} {'too high':>9} {'grey':>5}")
-    for (t, lv, s0, e0, _h0, _g0), (_t, _lv, s1, e1, h1, g1) in zip(report[0.0], report[xpsim.KILL_SHARE]):
-        print(f"{t[:48]:48} {lv[0]:>3}-{lv[1]:<3} {s0:>5}->{e0:<6} {s1:>5}->{e1:<6} {h1:>9} {g1:>5}")
-    json.dump({str(k): v for k, v in report.items()}, open(os.path.join(OUT_DIR, 'tools', 'levels.json'), 'w'), indent=1)
+                        grey += char.turn_in(q)[1]
+            rows.append((ch['title'], round(start, 1), round(char.exact, 1), hard, grey, grind))
+        return rows
+    q_only = walk(0.0, False)
+    kills = walk(xpsim.KILL_SHARE, False)
+    routed = walk(xpsim.KILL_SHARE, True)
+    total = sum(xpsim.XP_TO_NEXT[1:60])
+    print(f"\nSimulated level by chapter. Quest XP is real Forever data; kill XP is an ASSUMPTION "
+          f"(+{int(xpsim.KILL_SHARE * 100)}% of quest XP, plus {xpsim.DUNGEON_RUN_LEVEL} level per dungeon run). "
+          f"'routed' includes the guide's grind steps.")
+    print(f"{'chapter':40} {'quests only':>13} {'+kills, no grind':>17} {'routed':>13} {'grind XP':>9} {'above':>6} {'grey':>5}")
+    for a0, a1, a2 in zip(q_only, kills, routed):
+        print(f"{a0[0][:40]:40} {a0[1]:>5}->{a0[2]:<6} {a1[1]:>7}->{a1[2]:<8} {a2[1]:>5}->{a2[2]:<6} {a2[5]:>9} {a2[3]:>6} {a2[4]:>5}")
+    print(f"grind steps stand for {b.grind_xp} XP = {100 * b.grind_xp / total:.1f}% of the XP for 1-60; "
+          f"without them (and with the kill assumption) the route ends at about {kills[-1][2]}")
+    json.dump({'quests_only': q_only, 'kills': kills, 'routed': routed, 'grind_xp': b.grind_xp},
+              open(os.path.join(OUT_DIR, 'tools', 'levels.json'), 'w'), indent=1)
     left = [q for q in b.dropped]
     print('quests accepted but never turned in by the route:', len(left))
     json.dump({str(q): qname(q) for q in left}, open(os.path.join(OUT_DIR, 'tools', 'unfinished.json'), 'w'), indent=1)

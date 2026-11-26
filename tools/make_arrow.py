@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+# Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 """Draw Media/Arrow.tga: a 128x128 arrowhead pointing up,
 white with a dark outline so the addon can tint it with SetVertexColor.
 Usage: python3 -I tools/make_arrow.py Media/Arrow.tga

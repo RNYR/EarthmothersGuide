@@ -1,5 +1,5 @@
 -- Earthmother's Guide: the guide panel (with the built-in arrow) and /emg commands.
--- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+-- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 
 local ADDON, ns = ...
 ns = ns or _G.EarthmothersGuide
@@ -26,6 +26,7 @@ local function c(hex, text) return "|c" .. hex .. text .. "|r" end
 local panel
 local PANEL_WIDTH = 330
 local ARROW_COL = 50        -- width of the arrow column on the right
+local CHECK_W = 18          -- quest checkbox size
 local PAD = 10
 
 ----------------------------------------------------------------------------------------------
@@ -71,27 +72,43 @@ local function activeQuestLines(lines, step, id, targeted)
   end
 end
 
-local function questLines(step)
-  local lines = {}
-  if not step.q then return lines end
+-- One row per quest of the current step, each with a "skip this quest" checkbox. A row is
+-- { q = questID, text = "...", skipped = bool } or, for note/training/hearth steps, a single
+-- { done = true, text = "Done" } row.
+local function questRows(step)
+  local rows = {}
+  if ns.IsManual(step) then
+    rows[1] = { done = true, text = c(COLORS.dim, "Done") }
+    return rows
+  end
+  if not step.q then return rows end
   local targeted = panel and panel.arrowQuest
-  for _, id in ipairs(ns.StepQuests(step)) do
-    if step.t == "complete" then
-      -- checklist: ticked when finished, hidden when never picked up
-      if ns.IsQuestTurnedIn(id) or ns.IsQuestReady(id) then
-        lines[#lines + 1] = READY .. " " .. c(COLORS.dim, questName(step, id) .. (ns.IsQuestReady(id) and " - ready" or ""))
-      elseif ns.IsQuestInLog(id) then
-        activeQuestLines(lines, step, id, targeted == id and #step.q > 1)
+  for _, id in ipairs(step.q) do
+    local name = questName(step, id)
+    if ns.IsSkipped(id) then
+      -- stays visible (dimmed, ticked) while its step is on screen, so a misclick is easy to undo
+      rows[#rows + 1] = { q = id, skipped = true, text = c(COLORS.dim, name .. " - skipped") }
+    elseif not ns.QuestHidden(step, id) then
+      local lines = {}
+      if step.t == "complete" then
+        if ns.IsQuestTurnedIn(id) or ns.IsQuestReady(id) then
+          lines[1] = READY .. " " .. c(COLORS.dim, name .. (ns.IsQuestReady(id) and " - ready" or ""))
+        elseif ns.IsQuestFailed and ns.IsQuestFailed(id) then
+          lines[1] = name .. c(COLORS.dungeon, " - failed: abandon it and pick it up again")
+        elseif ns.IsQuestInLog(id) then
+          activeQuestLines(lines, step, id, targeted == id and #step.q > 1)
+          lines[1] = lines[1]:gsub("^%- ", "")
+        end
+      else
+        local mark = ""
+        if ns.IsQuestTurnedIn(id) or (step.t == "accept" and ns.IsQuestInLog(id)) then mark = " " .. READY end
+        local prof = step.prof and step.prof[id]
+        lines[1] = name .. (prof and c(COLORS.dim, " (" .. prof .. ")") or "") .. mark
       end
-    else
-      local mark = ""
-      if ns.IsQuestTurnedIn(id) then mark = " " .. READY
-      elseif step.t == "accept" and ns.IsQuestInLog(id) then mark = " " .. READY end
-      local prof = step.prof and step.prof[id]
-      lines[#lines + 1] = "- " .. questName(step, id) .. (prof and c(COLORS.dim, " (" .. prof .. ")") or "") .. mark
+      if #lines > 0 then rows[#rows + 1] = { q = id, text = table.concat(lines, "\n") } end
     end
   end
-  return lines
+  return rows
 end
 
 -- Finished quests waiting for a turn-in somewhere else: name, who takes it and where.
@@ -165,14 +182,13 @@ local function layout()
   local width = PANEL_WIDTH - 2 * PAD - (hasArrow and ARROW_COL or 0)
   -- The chapter line shares the row with the arrow, so it stops before it.
   panel.chapter:SetWidth(width)
-  local blocks = { panel.body, panel.also, panel.tip, panel.hint }
   local y = -44
   local textHeight = 0
-  for i, fs in ipairs(blocks) do
+  local function place(fs, spacing)
     fs:ClearAllPoints()
     fs:SetHeight(0)          -- let the text size itself before we measure it
     fs:SetWidth(width)
-    local h = blockHeight(fs, i == 1 and 2 or 0)
+    local h = blockHeight(fs, spacing)
     if h > 0 then
       fs:SetPoint("TOPLEFT", panel, "TOPLEFT", left, y)
       fs:SetHeight(h)
@@ -183,6 +199,29 @@ local function layout()
       fs:Hide()
     end
   end
+  place(panel.body, 2)
+  -- quest rows: checkbox on the left, text beside it
+  for _, row in ipairs(panel.rows) do
+    if row.used then
+      row.text:ClearAllPoints()
+      row.text:SetHeight(0)
+      row.text:SetWidth(width - CHECK_W)
+      local h = math.max(CHECK_W - 2, blockHeight(row.text, 2))
+      row:ClearAllPoints()
+      row:SetPoint("TOPLEFT", panel, "TOPLEFT", left, y)
+      row:SetSize(width, h)
+      row.text:SetPoint("TOPLEFT", row, "TOPLEFT", CHECK_W, -2)
+      row.text:SetHeight(h)
+      row:Show()
+      y = y - h - 2
+      textHeight = textHeight + h + 2
+    else
+      row:Hide()
+    end
+  end
+  place(panel.also, 0)
+  place(panel.tip, 0)
+  place(panel.hint, 0)
   -- arrow (30) + distance line under it, starting at -25
   local arrowBottom = hasArrow and (25 + 30 + 16) or 0
   panel:SetHeight(math.max(70, 44 + textHeight + 6, arrowBottom + 8))
@@ -197,6 +236,7 @@ local function render(step)
   if not step then
     panel.chapter:SetText(c(COLORS.dim, "No guide steps loaded."))
     panel.body:SetText("")
+    for _, row in ipairs(panel.rows) do row.used = false end
     panel.also:SetText("")
     panel.tip:SetText("")
     panel.hint:SetText("")
@@ -219,14 +259,23 @@ local function render(step)
   elseif step.x then
     lines[#lines + 1] = c(COLORS.dim, ("%s (%.1f, %.1f)"):format(step.zone or "", step.x, step.y))
   end
-  for _, l in ipairs(questLines(step)) do lines[#lines + 1] = l end
   panel.body:SetText(table.concat(lines, "\n"))
+  local rows = questRows(step)
+  for i, spec in ipairs(rows) do
+    local row = panel.rows[i] or panel:NewRow()
+    row.used, row.spec = true, spec
+    row.text:SetText(spec.text)
+    row.check:SetChecked(spec.skipped and true or false)
+    row.tipText = spec.done and "Tick when you have done this step." or
+      (spec.skipped and "Skipped: untick to put this quest back in the route." or "Skip this quest: the guide stops waiting for it.")
+  end
+  for i = #rows + 1, #panel.rows do panel.rows[i].used = false end
   panel.also:SetText(extraLines(step) or "")
   local tip = ns.StepTip(step)
   panel.tip:SetText(tip and c(COLORS.tip, tip) or "")
   local hint = nil
-  if step.t == "bind" then hint = "Continues when your hearthstone is set here (or click the panel)."
-  elseif ns.IsManual(step) then hint = "Click the panel to continue." end
+  if step.t == "bind" then hint = "Continues when your hearthstone is set here (or tick Done)."
+  elseif ns.IsManual(step) then hint = "Tick Done to continue." end
   -- falling behind: say so instead of sending you into quests that are too hard
   local level = ns.PlayerLevel()
   if step.q and step.ql and step.ql >= level + 3 and not step.cls then
@@ -269,20 +318,19 @@ local function createPanel()
     if ns.PlaceItemButton then ns.PlaceItemButton() end
     if C_Timer and C_Timer.After then C_Timer.After(0, function() self.dragging = false end) else self.dragging = false end
   end)
-  -- Left-click continues a note or training step; right-click opens the settings.
+  -- Left-drag moves the panel; right-click opens the settings. Steps continue via the checkboxes.
   panel:SetScript("OnMouseDown", function(self)
-    self.downX, self.downY = GetCursorPosition and GetCursorPosition()
+    self.downX, self.downY = nil, nil
+    if GetCursorPosition then self.downX, self.downY = GetCursorPosition() end
   end)
   panel:SetScript("OnMouseUp", function(self, button)
     if self.dragging then return end
-    if GetCursorPosition and self.downX then
+    if GetCursorPosition and self.downX and self.downY then
       local x, y = GetCursorPosition()
       if math.abs(x - self.downX) + math.abs(y - self.downY) > 6 then return end  -- a drag, not a click
     end
     if button == "RightButton" then
       if ns.OpenOptions then ns.OpenOptions() end
-    elseif button == "LeftButton" and ns.IsManual(ns.Current()) then
-      ns.Next()
     end
   end)
   if panel.SetBackdrop then
@@ -331,6 +379,40 @@ local function createPanel()
     return fs
   end
   panel.body = textBlock(2)
+
+  -- pooled quest rows: a small checkbox (skip this quest / Done) and the quest text
+  panel.rows = {}
+  function panel:NewRow()
+    local row = CreateFrame("Frame", nil, self)
+    row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    row.check:SetSize(CHECK_W, CHECK_W)
+    row.check:SetPoint("TOPLEFT", row, "TOPLEFT", -3, 2)
+    row.check:SetScript("OnClick", function(cb)
+      local spec = row.spec
+      if not spec then return end
+      if spec.done then
+        cb:SetChecked(false)
+        ns.Next()
+      elseif spec.q then
+        ns.SetSkipped(spec.q, cb:GetChecked() and true or false)
+      end
+    end)
+    row.check:SetScript("OnEnter", function(cb)
+      if GameTooltip and row.tipText then
+        GameTooltip:SetOwner(cb, "ANCHOR_LEFT")
+        GameTooltip:SetText(row.tipText, 1, 1, 1, 1, true)
+        GameTooltip:Show()
+      end
+    end)
+    row.check:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.text:SetJustifyH("LEFT")
+    row.text:SetJustifyV("TOP")
+    row.text:SetWordWrap(true)
+    row.text:SetSpacing(2)
+    self.rows[#self.rows + 1] = row
+    return row
+  end
   panel.also = textBlock()
   panel.tip = textBlock()
   panel.hint = textBlock()
@@ -404,7 +486,20 @@ function ns.ShowPanel(show)
 end
 
 function ns.ApplyScale()
-  if panel then panel:SetScale(ns.Setting("scale") or 1) end
+  if not panel then return end
+  -- keep the top-left corner where you put it: positions are in the panel's own (scaled) units
+  local old = panel:GetScale() or 1
+  local new = ns.Setting("scale") or 1
+  local left, top = panel:GetLeft(), panel:GetTop()
+  panel:SetScale(new)
+  if left and top and old ~= new then
+    left, top = left * old / new, top * old / new
+    panel:ClearAllPoints()
+    panel:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+    EarthmothersGuideDB = EarthmothersGuideDB or {}
+    EarthmothersGuideDB.pos = { "TOPLEFT", "BOTTOMLEFT", left, top }
+  end
+  if ns.PlaceItemButton then ns.PlaceItemButton() end
 end
 
 ns.OnChange(function(step)
@@ -416,7 +511,8 @@ end)
 -- Slash commands
 ----------------------------------------------------------------------------------------------
 local HELP = {
-  "/emg - show or hide the guide (click the panel to continue notes, right-click for settings)",
+  "/emg - show or hide the guide (tick the box beside a quest to skip it, Done to continue a note; right-click for settings)",
+  "/emg unskip - put every skipped quest back in the route",
   "/emg options - settings and the route browser (chapters, zones, steps)",
   "/emg next | prev - move one step",
   "/emg chapter <1-12> - jump to a chapter",
@@ -457,6 +553,9 @@ SlashCmdList.EARTHMOTHERSGUIDE = function(msg)
     if arg == "on" or arg == "off" then ns.SetSetting("waypoints", arg == "on") end
     if ns.Setting("waypoints") then ns.SetWaypoint(ns.Current()) else ns.ClearMapPin() end
     say("map pin " .. (ns.Setting("waypoints") and "on" or "off"))
+  elseif cmd == "unskip" then
+    ns.ClearSkips()
+    say("all skipped quests are back in the route")
   elseif cmd == "tracker" then
     if arg == "on" or arg == "off" then ns.SetSetting("hideTracker", arg == "off") end
     if ns.UpdateBlizzardTracker then ns.UpdateBlizzardTracker() end

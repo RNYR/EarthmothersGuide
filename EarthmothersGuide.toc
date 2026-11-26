@@ -4,7 +4,7 @@
 ## Author: Vard Ruun
 ## Version: 1.0.0
 ## Category: Quests
-## X-License: GPL-3.0-or-later
+## X-License: GPL-3.0-only
 ## IconTexture: Interface\Icons\Ability_Druid_CatForm
 ## SavedVariables: EarthmothersGuideDB
 ## SavedVariablesPerCharacter: EarthmothersGuideCharDB

@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+# Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 """The 1-60 Tauren Druid route for WoW: Forever.
 
 gen.py turns this into Guide/*.lua. Segment types:
@@ -43,6 +43,8 @@ EXCLUDE = [
     9121, 9122, 9123,       # The Dread Citadel - Naxxramas (raid attunement, not leveling)
     5401, 92842, 91882,     # Alliance-side versions (Chillwind Camp, Nethergarde); Horde take 5405/97319
     1367,                   # Magram Alliance - opposes Gelkis Alliance (1368); a Tauren can only side with one
+    5163,                   # Are We There, Yeti? - objectives in three zones on two continents
+    95309,                  # No Orc Left Behind - no finisher in the data
     854,                    # Journey to the Crossroads (Kirge Sternhorn breadcrumb, Barrens side)
 ]
 
@@ -63,7 +65,7 @@ PROFESSION = {
 
 # Far-away cities: a quest waiting to be handed in there gets a detour once it is this many
 # levels below the route, so it is handed in before it loses its XP.
-CITY_AREAS = (ORGRIMMAR, UNDERCITY, THUNDER_BLUFF, MULGORE)
+CITY_AREAS = (ORGRIMMAR, UNDERCITY, THUNDER_BLUFF, MULGORE, TIRISFAL)
 MAX_WAIT_LEVELS = 4
 
 # How to get to a zone (used for travel steps and detours). Hearthstone hints are added
@@ -206,7 +208,6 @@ CHAPTERS = [
         quests([SILVERPINE], 10, 24, turnin_zones=[UNDERCITY]),
         dungeon('Ruins of Lordaeron', 15, 22, zones=[16611], turnin_zones=[UNDERCITY, TIRISFAL, SILVERPINE],
                 note='Ruins of Lordaeron (new): the entrance is under Undercity. Grab its quests in Undercity, Tirisfal and Silverpine.'),
-        dungeon('Shadowfang Keep', 20, 27, zones=[209], turnin_zones=[SILVERPINE, UNDERCITY]),
         step(t='goto', text='Aquatic Form: dive to the lockbox off the Silverpine coast and loot one Half Pendant.',
              area=SILVERPINE, x=29.6, y=29.2, radius=2),
     ]},
@@ -255,25 +256,27 @@ CHAPTERS = [
     ]},
     {'file': 'Ch06_HillsbradArathi.lua', 'title': 'Hillsbrad, Alterac and Arathi', 'levels': (29, 35), 'segments': [
         train(30),
+        step(t='level', lvl=30, text='Reach level 30 for Travel Form.'),
         step(t='spell', spell=TRAVEL, text='Learn Travel Form at your trainer.'),
         step(t='zone', text='Zeppelin to Undercity, then south through Silverpine to Tarren Mill.', area=HILLSBRAD),
         bind(2388, 'Tarren Mill', HILLSBRAD),
         quests([HILLSBRAD], 24, 34, turnin_zones=[UNDERCITY]),
+        dungeon('Shadowfang Keep', 22, 30, zones=[209], turnin_zones=[SILVERPINE, UNDERCITY]),
         quests([ALTERAC], 30, 36, giver_zones=[HILLSBRAD]),
         dungeon('City of Dalaran', 28, 35, zones=[16544], turnin_zones=[HILLSBRAD, ALTERAC],
                 note='City of Dalaran (new): the key chain starts with Magus Wordeen Voidglare in Tarren Mill.'),
         quests([ARATHI], 30, 37),
         dungeon('Excavation Site: Wetlands', 26, 33, zones=[16732], turnin_zones=[ARATHI, ORGRIMMAR, WETLANDS],
                 note='Excavation Site: Wetlands (new): it sits in Alliance land, so bring a group.'),
-        dungeon('Scarlet Monastery', 30, 42, zones=[796], turnin_zones=[UNDERCITY, TIRISFAL, HILLSBRAD]),
+        dungeon('Scarlet Monastery', 30, 38, zones=[796], turnin_zones=[UNDERCITY, TIRISFAL, HILLSBRAD]),
         train(32),
     ]},
     {'file': 'Ch07_StranglethornDesolace.lua', 'title': 'Stranglethorn and Desolace', 'levels': (35, 38), 'segments': [
         step(t='zone', text="Zeppelin from Orgrimmar to Grom'gol in Stranglethorn.", area=STV),
         bind(5814, "Grom'gol Base Camp", STV),
         quests([STV], 30, 39),
-        dungeon('The Drowned City', 35, 40, quest_ids=[95775, 95776, 95789, 95791, 96774], turnin_zones=[STV, MULGORE],
-                note='The Drowned City (new): quests from Grom\'gol, Booty Bay and Mazu\'kon in north-west Mulgore.'),
+        dungeon('The Drowned City', 35, 40, quest_ids=[95775, 95776, 95789, 95791], turnin_zones=[STV],
+                note='The Drowned City (new): quests from Grom\'gol and Booty Bay.'),
         train(34),
         bind(11106, 'Shadowprey Village', DESOLACE),
         quests([DESOLACE], 30, 39),
@@ -290,6 +293,7 @@ CHAPTERS = [
         quests([RIVERGLADES], 36, 46),
         dungeon("Krol'dok Stronghold", 40, 45, quest_ids=[94968, 94972, 94975], turnin_zones=[RIVERGLADES]),
         train(40),
+        step(t='level', lvl=40, text='Reach level 40 for Dire Bear Form and your Kodo.'),
         step(t='spell', spell=DIRE_BEAR, text='Learn Dire Bear Form at your trainer.'),
         step(t='note', text='Level 40: buy your Kodo from Harb Clawhoof in Bloodhoof Village and train riding.'),
         train(42),
@@ -331,7 +335,7 @@ CHAPTERS = [
     {'file': 'Ch11_UngoroFelwoodAzshara.lua', 'title': "Un'Goro, Felwood, Azshara and Burning Steppes", 'levels': (52, 55),
      'segments': [
         chain(
-            dict(t='accept', q=[9063], text='Torwa Pathfinder - druid quest for Un\'Goro'),
+            dict(t='accept', q=[9063], prefer=MOONGLADE, text='Torwa Pathfinder - from Loganaar in Moonglade (one teleport away)'),
         ),
         bind(7733, 'Gadgetzan', TANARIS),
         quests([UNGORO], 48, 55),
@@ -343,9 +347,7 @@ CHAPTERS = [
             dict(t='accept', q=[9051]),
             dict(t='complete', q=[9051]),
             dict(t='turnin', q=[9051]),
-            dict(t='accept', q=[9053]),
-            dict(t='complete', q=[9053]),
-            dict(t='turnin', q=[9053]),
+            dict(t='accept', q=[9053], tip="A Better Ingredient needs Putrid Vine from Atal'alarion in Sunken Temple - the guide gets to it there."),
         ),
         step(t='note', text="Before leaving Un'Goro, collect power crystals - Shaper's Terrace at 58 needs them."),
         quests([TANARIS], 50, 56),
@@ -355,6 +357,7 @@ CHAPTERS = [
         train(52),
         step(t='note', text='Eastern Kingdoms trip: Sunken Temple, Searing Gorge, the Burning Steppes and Blackrock Depths.'),
         dungeon('Sunken Temple', 50, 60, zones=[1477, 1417], turnin_zones=[SWAMP]),
+        chain(dict(t='complete', q=[9053], text="Sunken Temple: defeat Atal'alarion for the Putrid Vine (A Better Ingredient)")),
         quests([HINTERLANDS], 50, 56),
         quests([SEARING], 50, 56),
         quests([STV], 50, 56),
@@ -364,20 +367,23 @@ CHAPTERS = [
         dungeon('Blackrock Depths', 52, 60, zones=[1584, 1585], turnin_zones=[STEPPES, SEARING, BADLANDS]),
         train(54),
     ]},
-    {'file': 'Ch12_PlaguelandsWinterspring.lua', 'title': 'Plaguelands, Winterspring and Silithus', 'levels': (55, 60),
+    {'file': 'Ch12_PlaguelandsWinterspring.lua', 'title': 'Plaguelands, Winterspring, Silithus and Mount Hyjal', 'levels': (55, 60),
      'segments': [
-        dungeon('Blackmaw Hold', 55, 60, quest_ids=[92066, 92065, 96246, 97198], turnin_zones=[AZSHARA, MULGORE]),
+        step(t='note', text='Eastern Kingdoms first: the Plaguelands and the Blasted Lands.'),
         quests([WPL], 50, 58, giver_zones=[TIRISFAL], turnin_zones=[UNDERCITY]),
         bind(16256, "Light's Hope Chapel", EPL),
         quests([EPL], 53, 60, turnin_zones=[WPL, TIRISFAL]),
         quests([BLASTED], 54, 59),
+        flush(EPL, TIRISFAL, WPL, UNDERCITY),
         train(56),
+        step(t='note', text='Then Kalimdor for the rest of the way to 60.'),
+        dungeon('Blackmaw Hold', 55, 60, quest_ids=[92066, 92065, 96246, 97198], turnin_zones=[AZSHARA, MULGORE]),
         step(t='zone', text='Travel to Winterspring (Everlook).', area=WINTERSPRING),
         bind(11118, 'Everlook', WINTERSPRING),
         quests([WINTERSPRING], 52, 60),
-        flush(EPL, TIRISFAL, WPL),
         quests([FELWOOD], 54, 59),
         quests([AZSHARA], 54, 59),
+        chain(dict(t='turnin', q=[9053], text="Hand A Better Ingredient in to Torwa Pathfinder in Un'Goro")),
         quests([UNGORO], 54, 59),
         quests([SILITHUS], 54, 59),
         step(t='note', text='Mount Hyjal is through Darkwhisper Gorge in southern Winterspring.'),
@@ -385,7 +391,6 @@ CHAPTERS = [
         flush(WINTERSPRING, THUNDER_BLUFF, ORGRIMMAR, DUROTAR, BARRENS, TANARIS),
         train(58),
         dungeon("Shaper's Terrace", 58, 60, zones=[16985], turnin_zones=[UNGORO, SILITHUS, MULGORE]),
-        step(t='zone', text='Head to Undercity to hand in the quests waiting there.', area=UNDERCITY),
         step(t='level', lvl=60, text='Finish any quests left in your log until you reach level 60.'),
         train(60),
         step(t='note', text='Level 60! Scholomance, Stratholme and Blackrock Spire quests are endgame from here.'),

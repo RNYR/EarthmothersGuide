@@ -6,7 +6,7 @@ It is an original route. Quest names, quest IDs, NPCs and coordinates come from 
 
 ## Install
 
-Install it with the CurseForge app, or download the release zip and unpack it so the `EarthmothersGuide` folder ends up in:
+Download the release zip (or install it with the CurseForge app once it is published there) and unpack it so the `EarthmothersGuide` folder ends up in your AddOns folder. On Windows that is usually `C:\\Program Files (x86)\\World of Warcraft\\_forever_\\Interface\\AddOns\\EarthmothersGuide`; on a Mac:
 
 ```
 /Applications/World of Warcraft/_forever_/Interface/AddOns/EarthmothersGuide
@@ -16,7 +16,7 @@ On Windows the folder is usually `C:\Program Files (x86)\World of Warcraft\_fore
 
 Then restart the game and make sure the addon is enabled on the character screen. Commands start with `/emg`.
 
-From a copy of the source repository, copy only the runtime files: `EarthmothersGuide.toc`, `Core.lua`, `Arrow.lua`, `UI.lua`, `Items.lua`, `Options.lua`, `Guide/` and `Media/` (not `tools/` or `tests/`).
+From a copy of the source repository, copy only the runtime files: `EarthmothersGuide.toc`, `Core.lua`, `Arrow.lua`, `UI.lua`, `Tracker.lua`, `Items.lua`, `Options.lua`, `Guide/` and `Media/` (not `tools/` or `tests/`).
 
 ## Use
 
@@ -24,7 +24,7 @@ From a copy of the source repository, copy only the runtime files: `Earthmothers
 
 Quests 6 or more levels below you are skipped as grey (change with `/emg gray 0-10`, 0 = never). Druid class quests are never skipped.
 
-A small brown panel shows the current step. It moves on by itself when you accept, finish or hand in the listed quests, learn a form, reach a level or arrive in a zone. Note and training steps say "Click the panel to continue": left-click the panel. Right-click the panel, or click the gear, to open the settings.
+A small brown panel shows the current step. It moves on by itself when you accept, finish or hand in the listed quests, learn a form, reach a level or arrive in a zone. **Every quest line has a checkbox: tick it to skip just that quest** (the guide stops waiting for it; untick to put it back, or `/emg unskip` to clear all skips). Note, training and hearthstone steps have a **Done** checkbox instead. Left-drag moves the panel; right-click it, or click the gear, to open the settings.
 
 **Several quests at once:** at each quest hub the guide picks up every available quest, then shows the whole batch as one step: "Do these 9 quests in the area". Each quest is a checklist line with its remaining objectives; finished quests get a tick and stay in the list, quests you dropped are left out. The step completes when every quest in it is finished. Pickup steps show what is **Coming up** in the next batch, and **Also carrying** pins any other unfinished quest from the chapter in your log. **Compact quest list** (settings) shows one line per quest, e.g. "Disrupt the Attacks  12/19".
 
@@ -34,9 +34,9 @@ A small brown panel shows the current step. It moves on by itself when you accep
 
 **Falling behind:** if a step's quests are 3 or more levels above you, the panel says so.
 
-**Hand-ins:** after a dungeon, quests are handed in inside it first, then at NPCs near it. Turn-ins in faraway cities wait for the next time the route goes there; if a quest for Orgrimmar, Undercity, Thunder Bluff or Mulgore would wait 4 levels or more, the route adds a detour (never across continents mid-trip), and Moonglade hand-ins happen on your training trips. **Ready to hand in** under the step lists every finished quest in your log with the NPC and zone that takes it, so nothing waiting is ever invisible.
+**Hand-ins:** after a dungeon, quests are handed in inside it first, then at NPCs near it. Turn-ins in faraway cities wait for the next time the route goes there; if a quest for Orgrimmar, Undercity, Thunder Bluff, Mulgore or Brill would wait 4 levels or more, the route adds a detour (never across continents mid-trip), and Moonglade hand-ins happen on your training trips. **Ready to hand in** under the step lists every finished quest in your log with the NPC and zone that takes it, so finished quests waiting elsewhere stay in view (the list shows up to six, then "+N more").
 
-**Hearthstone and travel:** the route tells you where to set your hearthstone at each new hub (Bloodhoof Village, the Crossroads, the Sepulcher, Sun Rock Retreat, Freewind Post, Tarren Mill, Grom'gol, Shadowprey Village, Rog'mar, Gadgetzan, Camp Mojache, Revantusk Village, Kargath, Light's Hope Chapel, Everlook); the step completes by itself once the game reports the new hearth. Every move to a new zone is a **Travel** step with how to get there, and it says "Use your hearthstone" whenever your hearth is set where you are going. If a quest waiting in Orgrimmar, Undercity or Thunder Bluff has waited 4 or more levels, the route adds a **Detour** to hand it in before it loses XP.
+**Hearthstone and travel:** the route tells you where to set your hearthstone at each new hub (Bloodhoof Village, the Crossroads, the Sepulcher, Sun Rock Retreat, Freewind Post, Tarren Mill, Grom'gol, Shadowprey Village, Rog'mar, Gadgetzan, Camp Mojache, Revantusk Village, Kargath, Light's Hope Chapel, Everlook); the step completes by itself once the game reports the new hearth. Every move to a new zone is a **Travel** step with how to get there, and it says "Use your hearthstone" whenever your hearth is set where you are going. If a quest waiting in Orgrimmar, Undercity, Thunder Bluff, Mulgore or Brill has waited 4 or more levels, the route adds a **Detour** to hand it in before it loses XP (never across continents mid-trip).
 
 **Druid travel with Teleport: Moonglade:** it does not use your hearthstone, so training steps suggest: teleport to Moonglade, train with Loganaar in Nighthaven, then hearth back to where your hearth is set. For Felwood and Winterspring the travel steps check your Timbermaw Hold reputation live: a Tauren starts Hostile, and the tunnel furbolgs attack until you are Unfriendly. Until then the guide routes you by flight path and tells you to run straight through the tunnel; the Felwood Timbermaw quests (Grazle, Nafien) on the route raise you to about Unfriendly, and from then on the tip switches to the Teleport: Moonglade + tunnel shortcut.
 
@@ -47,7 +47,7 @@ A small brown panel shows the current step. It moves on by itself when you accep
 **Arrow:** an arrowhead in the top-right of the panel points to the current step's NPC or, in a batch, to the nearest quest you have not finished (marked with ">" in the list; the map pin follows it), with the distance underneath (no TomTom needed). It is green when you face the target, yellow to the side and red behind, and says "here" within 8 yards. It works across zones on the same continent; on another continent or inside an instance it turns grey and says "far".
 
 **Settings** (gear, right-click, `/emg options`, or Esc > Options > AddOns > Earthmother's Guide):
-- show the panel, dungeon steps, arrow, Blizzard map pin, lock position, compact quest list, carried quests, quest item button, profession quests
+- show the panel, dungeon steps, arrow, Blizzard map pin, lock position, compact quest list, carried quests, quest item button, profession quests, replace Blizzard's quest tracker
 - panel size, and how many levels below you a quest must be to be skipped
 - Find my place, Back one step, Skip this step
 - the route browser: all 12 chapters, each with its level range, % done and a progress bar; pick one to see its zones, its dungeons with level ranges, and every step grouped by zone, with done steps ticked and your current step marked. Click a step to jump there.
@@ -57,6 +57,7 @@ A small brown panel shows the current step. It moves on by itself when you accep
 | `/emg` | show or hide the panel |
 | `/emg options` | settings and route browser |
 | `/emg next`, `/emg prev` | move one step |
+| `/emg unskip` | put every quest you skipped with its checkbox back in the route |
 | `/emg chapter 1-12` | jump to a chapter |
 | `/emg dungeons on\|off` | include or skip dungeon steps (also "Include dungeon steps" in the settings) |
 | `/emg check <questID>` | what the guide sees for one quest (useful for bug reports) |
@@ -75,26 +76,24 @@ If your saved position is ever lost or out of date, the guide works out where yo
 
 ## Chapters
 
-Level ranges come from simulating the route with real WoW: Forever quest XP (see Development).
+Level ranges are what a character reaches by following the route, simulated with **real WoW: Forever quest XP** plus two **assumptions**: kills along the way give 40% on top of quest XP, and a full dungeon run gives about half a level. With quest XP alone you would be several levels lower by the end. Where the route needs a higher level than the simulation reaches, it adds a short **Grind to level N** step (6 in all, about 4% of the XP for 1-60); if you run the dungeons you will usually be past them already.
 
 1. Mulgore 1-10 (Bear Form chain starts)
-2. The Barrens 10-15 (Lunaclaw, Cure Poison, Ragefire Chasm)
-3. Aquatic Form and Silverpine 15-20 (Ruins of Lordaeron, Shadowfang Keep)
-4. Barrens and Wailing Caverns 20-23 (Aquatic Form, new Cat Form chain)
-5. Stonetalon, Ashenvale, Thousand Needles 23-29 (Blackfathom Deeps, Razorfen Kraul)
-6. Hillsbrad, Alterac, Arathi 29-35 (City of Dalaran, Excavation Site: Wetlands, Scarlet Monastery)
-7. Stranglethorn and Desolace 35-38 (The Drowned City, Razorfen Downs)
-8. Riverglades 38-43 (Krol'dok Stronghold, Dire Bear, Kodo)
-9. Eastern Kingdoms, Tanaris, Feralas, Shen'dralas 43-47 (Uldaman, Zul'Farrak)
-10. Maraudon, Dustwallow, Hinterlands 47-52 (Alcaz Prison)
-11. Un'Goro, Felwood, Azshara, Burning Steppes 52-55 (Sunken Temple, Blackrock Depths)
-12. Plaguelands, Winterspring, Silithus, Mount Hyjal 55-60 (Blackmaw Hold, Shaper's Terrace)
-
-Where quests run out before the next ones are open, the route adds a short **Grind to level N** step (it completes by itself when you get there).
+2. The Barrens 10-16 (Lunaclaw, Cure Poison, Ragefire Chasm)
+3. Aquatic Form and Silverpine 16-20 (Ruins of Lordaeron)
+4. The Barrens and Wailing Caverns 20-24 (Aquatic Form, new Cat Form chain)
+5. Stonetalon, Ashenvale, Thousand Needles 24-30 (Blackfathom Deeps, Razorfen Kraul)
+6. Hillsbrad, Alterac, Arathi 30-36 (Shadowfang Keep, City of Dalaran, Excavation Site: Wetlands, Scarlet Monastery)
+7. Stranglethorn, Desolace, Thousand Needles, Dustwallow 36-40 (The Drowned City, Razorfen Downs)
+8. Riverglades 40-43 (Krol'dok Stronghold, Dire Bear, Kodo)
+9. Arathi, Badlands, Swamp of Sorrows, Stranglethorn, Tanaris, Feralas, Desolace, Shen'dralas 43-48 (Uldaman, Zul'Farrak)
+10. Desolace, Feralas, Tanaris, Dustwallow, Azshara, Hinterlands, Searing Gorge, Badlands 48-52 (Maraudon, Alcaz Prison)
+11. Un'Goro, Tanaris, Feralas, Felwood, Azshara, then Hinterlands, Searing Gorge, Stranglethorn, Blasted Lands, Burning Steppes 52-56 (Sunken Temple, Blackrock Depths)
+12. Plaguelands, Blasted Lands, then Winterspring, Felwood, Azshara, Un'Goro, Silithus, Mount Hyjal 56-60 (Blackmaw Hold, Shaper's Terrace)
 
 ## Known limits
 
-- Kill XP is an estimate (40% on top of quest XP); if you level faster or slower, the guide still follows your quests, and warns when quests are above you.
+- Kill XP is an estimate (40% on top of quest XP, half a level per dungeon run); if you level faster or slower, the guide still follows your quests, and warns when quests are above you.
 - Quest data is community data, not Blizzard's. Some Forever quests may be missing or placed oddly; skip a stuck step with `/emg next` or "Skip this step" in the settings.
 - Quest order inside a zone is worked out by distance, so it is good but not hand-tuned.
 - Quests started by a looted item are optional pickups ("Look out for"), never required.
@@ -113,7 +112,7 @@ python3 -I tools/gen.py /tmp/emg-db.json "/Applications/World of Warcraft/_forev
 luajit tests/run.lua
 ```
 
-The generator also simulates a character walking the route, using QuestieDB's real Forever quest XP (aggregated from real Forever sessions, scaled by level with Questie's formula) and the Classic-era XP curve. Kill XP is not in any database; it is modelled as 40% on top of quest XP (`tools/xp.py`, `KILL_SHARE`). The simulation sets the chapter level ranges, adds the grind steps, and prints a per-chapter report (quests-only vs with kills, pickups above your level, grey quests).
+The generator also simulates a character walking the route, using QuestieDB's real Forever quest XP (aggregated from real Forever sessions, scaled by level with Questie's formula) and the Classic-era XP curve. Kill XP is not in any database: it is modelled as 40% on top of quest XP (`KILL_SHARE`) plus half a level per dungeon run (`DUNGEON_RUN_LEVEL`), both in `tools/xp.py`. The simulation sets the chapter level ranges and adds the grind steps; every build prints a per-chapter report with three columns (quests only; with the kill assumptions but no grinds; as routed) and how much XP the grind steps stand for. Treat the levels as estimates good to a few levels.
 
 The arrow texture is drawn by `python3 -I tools/make_arrow.py Media/Arrow.tga`.
 
@@ -125,7 +124,7 @@ The guide text is English. Quest and NPC names come from the English game data.
 
 ## Credits and license
 
-Earthmother's Guide is licensed under the GNU GPL v3 or later (see `LICENSE`). Its quest, NPC and
+Earthmother's Guide is licensed under the GNU GPL v3 only (GPL-3.0-only, see `LICENSE`). Its quest, NPC and
 coordinate data is derived from [QuestieDB](https://github.com/Questie/QuestieDB) and
 [Questie](https://github.com/Questie/Questie), used under the GPL v3. See `NOTICE.md` for details.
 World of Warcraft names and quest text are (c) Blizzard Entertainment. This is a fan-made add-on,

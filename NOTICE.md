@@ -3,8 +3,9 @@
 Copyright (C) 2026 Vard Ruun
 
 Earthmother's Guide is free software: you can redistribute it and/or modify it under the terms of
-the GNU General Public License as published by the Free Software Foundation, either version 3
-of the License, or (at your option) any later version. See `LICENSE`.
+the GNU General Public License as published by the Free Software Foundation, version 3 of the
+License only (GPL-3.0-only), because its quest data is used under the GPLv3 terms its source
+permits, which name no later version. See `LICENSE`.
 
 ## Quest data
 

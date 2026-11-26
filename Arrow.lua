@@ -1,5 +1,5 @@
 -- Earthmother's Guide: built-in waypoint arrow (no TomTom needed).
--- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-or-later; see LICENSE and NOTICE.md.
+-- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
 -- Works out the direction and distance from the player to the current step's coordinates;
 -- the guide panel draws it as an arrowhead. Works across zones on the same continent.
 
@@ -48,7 +48,9 @@ end
 local rects = {}
 local function mapRect(mapID)
   local r = rects[mapID]
-  if r ~= nil then return r or nil end
+  if r then return r end
+  -- a failed lookup (e.g. while loading) is retried after a few seconds, not cached for good
+  if r == false and (GetTime and GetTime() or 0) < (rects["retry" .. mapID] or 0) then return nil end
   r = false
   if C_Map and C_Map.GetWorldPosFromMapPos and CreateVector2D then
     -- measured from the top-left corner and the centre: the far corner (1,1) is translated
@@ -60,6 +62,7 @@ local function mapRect(mapID)
     end
   end
   rects[mapID] = r
+  if not r then rects["retry" .. mapID] = (GetTime and GetTime() or 0) + 5 end
   return r or nil
 end
 
