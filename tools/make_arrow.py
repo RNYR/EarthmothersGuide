@@ -11,8 +11,7 @@ SS = 4  # supersampling for anti-aliasing
 # Shapes in 0..1 coordinates, y down. Each: (polygon, brightness).
 # A notched arrowhead (chevron) that fills the texture, so it reads well at small sizes.
 HEAD = [(0.50, 0.08), (0.90, 0.88), (0.50, 0.68), (0.10, 0.88)]
-RIDGE = [(0.50, 0.08), (0.90, 0.88), (0.50, 0.68)]  # right half drawn a little darker for depth
-SHAPES = [(HEAD, 1.0), (RIDGE, 0.80)]
+SHAPES = [(HEAD, 1.0)]  # one solid shape, so the tint is a single even colour
 OUTLINE = 0.028
 DARK = 0.10
 
