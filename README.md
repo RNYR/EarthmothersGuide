@@ -1,7 +1,5 @@
 # Earthmother's Guide
 
-> **Alpha.** The guide is new and has only been tested briefly in the game. Expect rough edges, and please report problems at https://github.com/RNYR/EarthmothersGuide/issues.
-
 A 1-60 **Tauren Druid** leveling guide for **WoW: Forever**, with dungeon quests and the Forever druid class quests. It is named after the Earthmother, An'she and Mu'sha - the sun and moon the Tauren and their druids revere.
 
 It is an original route. Quest names, quest IDs, NPCs and coordinates come from the community QuestieDB Forever database; the zone order, level windows and druid steps are in `tools/route.py`.
@@ -22,7 +20,7 @@ On a Mac:
 /Applications/World of Warcraft/_forever_/Interface/AddOns/EarthmothersGuide
 ```
 
-Then restart the game and make sure the addon is enabled on the character screen. Commands start with `/emg`.
+Then restart the game and make sure the addon is enabled on the character screen. Commands start with `/emg`. Found a problem? Comment on CurseForge or open an issue on GitHub (see [Support](#support)).
 
 From a copy of the [source repository](https://github.com/RNYR/EarthmothersGuide), copy only the runtime files: `EarthmothersGuide.toc`, `Core.lua`, `Arrow.lua`, `UI.lua`, `Tracker.lua`, `Items.lua`, `Options.lua`, `Guide/` and `Media/Arrow.tga` (not `tools/`, `tests/` or the logo files in `Media/`).
 
@@ -135,7 +133,7 @@ The guide text is English. Quest and NPC names come from the English game data.
 
 Earthmother's Guide is free and open source, and it stays that way. If it saved you some alt-tabbing on the way to 60, you can buy me a coffee on [Ko-fi](https://ko-fi.com/v4rdr). Tips are optional and go toward keeping the route up to date as Forever changes.
 
-Bug reports and route fixes help just as much: open an issue with the output of `/emg status` or `/emg check <questID>`.
+Bug reports and route fixes help just as much. If you run into a problem, comment on the CurseForge page or open an issue at https://github.com/RNYR/EarthmothersGuide/issues, ideally with the output of `/emg status` or `/emg check <questID>`.
 
 ## Credits and license
 
