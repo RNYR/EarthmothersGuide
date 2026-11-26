@@ -212,6 +212,10 @@ local function layout()
       row:SetSize(width, h)
       row.text:SetPoint("TOPLEFT", row, "TOPLEFT", CHECK_W, -2)
       row.text:SetHeight(h)
+      -- centre the checkbox on the quest's first text line (not the row), whatever the font size
+      local _, size = row.text:GetFont()
+      row.check:ClearAllPoints()
+      row.check:SetPoint("CENTER", row, "TOPLEFT", CHECK_W / 2 - 3, -2 - math.floor((size or 10) / 2 + 0.5))
       row:Show()
       y = y - h - 2
       textHeight = textHeight + h + 2
@@ -386,7 +390,7 @@ local function createPanel()
     local row = CreateFrame("Frame", nil, self)
     row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
     row.check:SetSize(CHECK_W, CHECK_W)
-    row.check:SetPoint("TOPLEFT", row, "TOPLEFT", -3, 2)
+    row.check:SetPoint("TOPLEFT", row, "TOPLEFT", -3, 2)   -- re-anchored to the first text line in layout()
     row.check:SetScript("OnClick", function(cb)
       local spec = row.spec
       if not spec then return end
