@@ -22,9 +22,9 @@ local function inCombat() return InCombatLockdown and InCombatLockdown() end
 local function apply()
   local f = tracker()
   if not f then return end
-  if hidden then f:SetAlpha(0) end                 -- never protected: works in combat too
+  f:SetAlpha(hidden and 0 or 1)                    -- never protected: works in combat too
   local protected = f.IsProtected and f:IsProtected()
-  if inCombat() and (protected or not hidden) then
+  if inCombat() and protected then
     -- finish after combat, using whatever is wanted then
     waitFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     return

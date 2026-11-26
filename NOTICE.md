@@ -24,12 +24,14 @@ anything not covered should be treated as "all rights reserved"
 contributed to that data and object to its use here, open an issue at https://github.com/RNYR/EarthmothersGuide/issues and it will
 be removed.
 
-Earthmother's Guide modified the data: `tools/gen.py` filters it for a Tauren Druid, orders it
-into a 1-60 route, and reformats it as Lua tables. The Questie name and logo are not used for
+Earthmother's Guide modified the data: `tools/gen.py` filters it for a Tauren Druid, builds the
+1-60 route from the order in `tools/route.py` (with the level simulation in `tools/xp.py`), and
+reformats it as Lua tables. The Questie name and logo are not used for
 branding.
 
 The source needed to regenerate `Guide/*.lua` (the route specification `tools/route.py`, the
-generator `tools/gen.py` and the database decoder `tools/extract_questiedb.py`) is in this
+generator `tools/gen.py`, the level simulation `tools/xp.py` and the database decoder
+`tools/extract_questiedb.py`) is in this
 project's public source repository: https://github.com/RNYR/EarthmothersGuide
 
 ## World of Warcraft
@@ -41,7 +43,7 @@ fan-made add-on and is not affiliated with or endorsed by Blizzard Entertainment
 
 ## Artwork
 
-`Media/Arrow.tga` is original artwork drawn by `tools/make_arrow.py` (GPL v3, part of this
-project). The project logo (`Media/logo.svg`, rendered to `Media/logo-400.png` and
-`Media/logo-1024.png`) is original artwork drawn by `tools/make_logo.py`, (C) 2026 Vard Ruun, GPL-3.0-only. Icons referenced at runtime (`Interface\Icons\...`) are the game's own and are not
+`Media/Arrow.tga` is original artwork drawn by `tools/make_arrow.py` (GPL-3.0-only, part of this
+project). In the source repository only (not part of the addon package), the project logo (`Media/logo.svg`, rendered to `Media/logo-400.png` and
+`Media/logo-1024.png`, with a copy at `docs/logo.png`) is original artwork drawn by `tools/make_logo.py`, (C) 2026 Vard Ruun, GPL-3.0-only. Icons referenced at runtime (`Interface\Icons\...`) are the game's own and are not
 redistributed.

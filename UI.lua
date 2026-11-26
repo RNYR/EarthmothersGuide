@@ -27,7 +27,10 @@ local panel
 local PANEL_WIDTH = 330
 local ARROW_COL = 50        -- width of the arrow column on the right
 local CHECK_W = 18          -- quest checkbox size
+local ITEM_W = 24           -- quest item button beside a quest row (like Blizzard's quest tracker)
 local PAD = 10
+local HEADER = 44           -- title and chapter line; the rest of the panel scrolls
+local MIN_HEIGHT = 120      -- the smallest "Panel max height" still shows the arrow and a line or two
 
 ----------------------------------------------------------------------------------------------
 -- Text
@@ -116,9 +119,7 @@ local function readyLines()
   local list = ns.ReadyToHandIn()
   if #list == 0 then return nil end
   local lines = { c(COLORS.title, "Ready to hand in:") }
-  local MAX = 6
-  for i, e in ipairs(list) do
-    if i > MAX then lines[#lines + 1] = c(COLORS.dim, ("  +%d more"):format(#list - MAX)) break end
+  for _, e in ipairs(list) do
     local who = e.npc and (e.npc .. (e.zone and (", " .. e.zone) or "")) or (e.zone or "")
     lines[#lines + 1] = READY .. " " .. e.name .. (who ~= "" and c(COLORS.dim, "  - " .. who) or "")
   end
@@ -142,11 +143,7 @@ local function extraLines(step)
     local list = ns.Carrying()
     if #list > 0 then
       local lines = { c(COLORS.title, "Also carrying:") }
-      local MAX = 8
-      for i, e in ipairs(list) do
-        if i <= MAX then activeQuestLines(lines, e.step, e.id, false) end
-      end
-      if #list > MAX then lines[#lines + 1] = c(COLORS.dim, ("  +%d more"):format(#list - MAX)) end
+      for _, e in ipairs(list) do activeQuestLines(lines, e.step, e.id, false) end
       parts[#parts + 1] = table.concat(lines, "\n")
     end
   end
@@ -182,7 +179,7 @@ local function layout()
   local width = PANEL_WIDTH - 2 * PAD - (hasArrow and ARROW_COL or 0)
   -- The chapter line shares the row with the arrow, so it stops before it.
   panel.chapter:SetWidth(width)
-  local y = -44
+  local y = 0                -- inside the scrolling content, under the header
   local textHeight = 0
   local function place(fs, spacing)
     fs:ClearAllPoints()
@@ -190,7 +187,7 @@ local function layout()
     fs:SetWidth(width)
     local h = blockHeight(fs, spacing)
     if h > 0 then
-      fs:SetPoint("TOPLEFT", panel, "TOPLEFT", left, y)
+      fs:SetPoint("TOPLEFT", panel.content, "TOPLEFT", left, y)
       fs:SetHeight(h)
       fs:Show()
       y = y - h - 5
@@ -205,10 +202,11 @@ local function layout()
     if row.used then
       row.text:ClearAllPoints()
       row.text:SetHeight(0)
-      row.text:SetWidth(width - CHECK_W)
-      local h = math.max(CHECK_W - 2, blockHeight(row.text, 2))
+      local itemW = (row.spec and row.spec.item) and ITEM_W or 0   -- room for the quest item button
+      row.text:SetWidth(width - CHECK_W - itemW)
+      local h = math.max(CHECK_W - 2, itemW > 0 and ITEM_W or 0, blockHeight(row.text, 2))
       row:ClearAllPoints()
-      row:SetPoint("TOPLEFT", panel, "TOPLEFT", left, y)
+      row:SetPoint("TOPLEFT", panel.content, "TOPLEFT", left, y)
       row:SetSize(width, h)
       row.text:SetPoint("TOPLEFT", row, "TOPLEFT", CHECK_W, -2)
       row.text:SetHeight(h)
@@ -228,8 +226,52 @@ local function layout()
   place(panel.hint, 0)
   -- arrow (30) + distance line under it, starting at -25
   local arrowBottom = hasArrow and (25 + 30 + 16) or 0
-  panel:SetHeight(math.max(70, 44 + textHeight + 6, arrowBottom + 8))
-  if ns.PlaceItemButton then ns.PlaceItemButton() end
+  local natural = math.max(70, HEADER + textHeight + 6, arrowBottom + 8)
+  local maxH = math.max(MIN_HEIGHT, arrowBottom + 8, ns.Setting("maxHeight") or 450)
+  local height = math.min(natural, maxH)
+  panel:SetHeight(height)
+  panel.content:SetSize(PANEL_WIDTH, math.max(1, textHeight))
+  -- longer than the maximum: scroll with the mouse wheel; a thin bar shows where you are
+  local view = height - HEADER - 6
+  panel.scrollMax = math.max(0, textHeight - view)
+  panel.scrollView, panel.scrollTotal = view, textHeight
+  ns.ScrollPanel(0)
+end
+
+-- Scroll the panel's content by `delta` pixels (positive = down), within its range.
+function ns.ScrollPanel(delta)
+  if not panel then return end
+  local maxS = panel.scrollMax or 0
+  local cur = math.max(0, math.min(maxS, (panel.scrollAt or 0) + (delta or 0)))
+  panel.scrollAt = cur
+  panel.scroll:SetVerticalScroll(cur)
+  if maxS > 0 then
+    local view, total = panel.scrollView, panel.scrollTotal
+    local thumb = math.max(12, view * view / total)
+    panel.thumb:SetHeight(thumb)
+    panel.thumb:ClearAllPoints()
+    panel.thumb:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -3, -HEADER - (view - thumb) * cur / maxS)
+    panel.thumb:Show()
+  else
+    panel.thumb:Hide()
+  end
+  if ns.UpdateItemButtons then ns.UpdateItemButtons() end
+end
+
+-- Show the "Panel max height" as an outline for a few seconds (while you change the setting).
+local previewToken = 0
+function ns.PreviewMaxHeight()
+  if not panel then return end
+  local h = math.max(MIN_HEIGHT, ns.Setting("maxHeight") or 450)
+  panel.preview:SetSize(PANEL_WIDTH, h)
+  panel.preview.label:SetText(c(COLORS.title, ("max height %d"):format(h)))
+  panel.preview:Show()
+  previewToken = previewToken + 1
+  local mine = previewToken
+  if C_Timer and C_Timer.After then
+    C_Timer.After(3, function() if mine == previewToken then panel.preview:Hide() end end)
+  end
+  layout()
 end
 
 ----------------------------------------------------------------------------------------------
@@ -268,6 +310,12 @@ local function render(step)
   for i, spec in ipairs(rows) do
     local row = panel.rows[i] or panel:NewRow()
     row.used, row.spec = true, spec
+    -- a usable quest item for a quest you are working on: a button beside its row
+    spec.item = nil
+    if spec.q and not spec.skipped and ns.Setting("itemButton") and ns.QuestItem
+        and ns.IsQuestInLog(spec.q) and not ns.IsQuestReady(spec.q) then
+      spec.item = ns.QuestItem(spec.q)
+    end
     row.text:SetText(spec.text)
     row.check:SetChecked(spec.skipped and true or false)
     row.tipText = spec.done and "Tick when you have done this step." or
@@ -290,6 +338,7 @@ local function render(step)
 
   if panel.lastWaypointStep ~= step then
     panel.lastWaypointStep = step
+    panel.scrollAt = 0          -- a new step starts at the top
     ns.SetWaypoint(step)
   end
   panel:UpdateArrow()
@@ -319,7 +368,7 @@ local function createPanel()
     self:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
     EarthmothersGuideDB = EarthmothersGuideDB or {}
     EarthmothersGuideDB.pos = { "TOPLEFT", "BOTTOMLEFT", left, top }
-    if ns.PlaceItemButton then ns.PlaceItemButton() end
+    if ns.UpdateItemButtons then ns.UpdateItemButtons() end
     if C_Timer and C_Timer.After then C_Timer.After(0, function() self.dragging = false end) else self.dragging = false end
   end)
   -- Left-drag moves the panel; right-click opens the settings. Steps continue via the checkboxes.
@@ -374,8 +423,32 @@ local function createPanel()
   panel.chapter:SetJustifyH("LEFT")
   panel.chapter:SetWordWrap(false)
 
+  -- everything under the header scrolls when the panel is taller than "Panel max height"
+  panel.scroll = CreateFrame("ScrollFrame", nil, panel)
+  panel.scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -HEADER)
+  panel.scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", 0, 6)
+  panel.content = CreateFrame("Frame", nil, panel.scroll)
+  panel.content:SetSize(PANEL_WIDTH, 1)
+  panel.scroll:SetScrollChild(panel.content)
+  panel:EnableMouseWheel(true)
+  panel:SetScript("OnMouseWheel", function(_, delta) ns.ScrollPanel(-delta * 36) end)
+  panel.thumb = panel:CreateTexture(nil, "OVERLAY")
+  panel.thumb:SetWidth(3)
+  panel.thumb:SetColorTexture(0.85, 0.72, 0.48, 0.6)
+  panel.thumb:Hide()
+  -- outline of the maximum height, shown for a moment while you change the setting
+  panel.preview = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+  panel.preview:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
+  if panel.preview.SetBackdrop then
+    panel.preview:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 2 })
+    panel.preview:SetBackdropBorderColor(0.85, 0.72, 0.48, 0.9)
+  end
+  panel.preview.label = panel.preview:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  panel.preview.label:SetPoint("BOTTOM", panel.preview, "BOTTOM", 0, 4)
+  panel.preview:Hide()
+
   local function textBlock(spacing)
-    local fs = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local fs = panel.content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     fs:SetJustifyH("LEFT")
     fs:SetJustifyV("TOP")
     fs:SetWordWrap(true)
@@ -387,7 +460,7 @@ local function createPanel()
   -- pooled quest rows: a small checkbox (skip this quest / Done) and the quest text
   panel.rows = {}
   function panel:NewRow()
-    local row = CreateFrame("Frame", nil, self)
+    local row = CreateFrame("Frame", nil, self.content)
     row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
     row.check:SetSize(CHECK_W, CHECK_W)
     row.check:SetPoint("TOPLEFT", row, "TOPLEFT", -3, 2)   -- re-anchored to the first text line in layout()
@@ -486,7 +559,7 @@ function ns.ShowPanel(show)
   if not panel then createPanel() end
   if show then panel:Show() else panel:Hide() end
   ns.SetSetting("shown", show)
-  if ns.UpdateItemButton then ns.UpdateItemButton() end
+  if ns.UpdateItemButtons then ns.UpdateItemButtons() end
 end
 
 function ns.ApplyScale()
@@ -503,7 +576,7 @@ function ns.ApplyScale()
     EarthmothersGuideDB = EarthmothersGuideDB or {}
     EarthmothersGuideDB.pos = { "TOPLEFT", "BOTTOMLEFT", left, top }
   end
-  if ns.PlaceItemButton then ns.PlaceItemButton() end
+  if ns.UpdateItemButtons then ns.UpdateItemButtons() end
 end
 
 ns.OnChange(function(step)
@@ -520,53 +593,17 @@ local HELP = {
   "/emg options - settings and the route browser (chapters, zones, steps)",
   "/emg next | prev - move one step",
   "/emg chapter <1-12> - jump to a chapter",
-  "/emg dungeons on|off - include dungeon steps",
   "/emg resume - work out your place again from your level and finished quests",
   "/emg status - your level, finished quests and missing druid forms",
   "/emg check <questID> - what the guide sees for one quest",
-  "/emg gray <0-10> - skip quests this many levels below you (0 = never)",
+  "/emg gray grey|0-10 - skip quests when they turn grey (default), never (0), or this many levels below you",
   "/emg way - set the arrow and map pin for this step again",
   "/emg tracker on|off - show or hide Blizzard's quest tracker (hidden while the guide replaces it)",
-  "/emg arrow on|off | waypoints on|off (map pin) | scale <0.6-1.6> | lock | unlock",
-  "/emg support - the link to buy the author a coffee (Ko-fi)",
+  "/emg arrow on|off | waypoints on|off (map pin) | scale <0.6-1.6> | height <150-900> | lock | unlock",
 }
 
 local function say(msg) print("|cff8fbf5aEarthmother's Guide|r: " .. msg) end
 ns.say = say
-
--- Tips are optional and the addon never asks unprompted: only /emg support and the settings button show this.
-ns.SUPPORT_URL = "https://ko-fi.com/v4rdr"
-
--- The game cannot open links, so show the URL in a box with the text selected, ready for Ctrl+C.
-function ns.ShowSupport()
-  say("enjoying the guide? You can buy me a coffee at |cffd9b77a" .. ns.SUPPORT_URL .. "|r - thank you!")
-  if not (StaticPopupDialogs and StaticPopup_Show) then return end
-  if not StaticPopupDialogs.EARTHMOTHERSGUIDE_SUPPORT then
-    local function editBox(popup)
-      return popup.editBox or popup.EditBox or (popup.GetEditBox and popup:GetEditBox())
-    end
-    StaticPopupDialogs.EARTHMOTHERSGUIDE_SUPPORT = {
-      text = "Earthmother's Guide is free. If it helped you on the way to 60, you can buy me a coffee on Ko-fi.\n\nPress Ctrl+C to copy the link:",
-      button1 = CLOSE or "Close",
-      hasEditBox = true,
-      editBoxWidth = 260,
-      OnShow = function(self)
-        local eb = editBox(self)
-        if eb then eb:SetText(ns.SUPPORT_URL); eb:HighlightText(); eb:SetFocus() end
-      end,
-      EditBoxOnTextChanged = function(eb)   -- keep the link intact if a key slips
-        if eb:GetText() ~= ns.SUPPORT_URL then eb:SetText(ns.SUPPORT_URL); eb:HighlightText() end
-      end,
-      EditBoxOnEnterPressed = function(eb) eb:GetParent():Hide() end,
-      EditBoxOnEscapePressed = function(eb) eb:GetParent():Hide() end,
-      timeout = 0,
-      whileDead = true,
-      hideOnEscape = true,
-      preferredIndex = 3,
-    }
-  end
-  StaticPopup_Show("EARTHMOTHERSGUIDE_SUPPORT")
-end
 
 SLASH_EARTHMOTHERSGUIDE1 = "/emg"
 SlashCmdList.EARTHMOTHERSGUIDE = function(msg)
@@ -581,9 +618,6 @@ SlashCmdList.EARTHMOTHERSGUIDE = function(msg)
   elseif cmd == "chapter" or cmd == "ch" then
     local n = tonumber(arg)
     if n and ns.chapters[n] then ns.GotoChapter(n) else say("chapters are 1-12") end
-  elseif cmd == "dungeons" then
-    if arg == "on" or arg == "off" then ns.SetSetting("dungeons", arg == "on") end
-    say("dungeon steps " .. (ns.Setting("dungeons") and "on" or "off"))
   elseif cmd == "arrow" then
     if arg == "on" or arg == "off" then ns.SetSetting("arrow", arg == "on") end
     if ns.Setting("arrow") then ns.SetWaypoint(ns.Current()) else ns.ClearArrow() end
@@ -625,15 +659,21 @@ SlashCmdList.EARTHMOTHERSGUIDE = function(msg)
       tostring(ns.IsQuestTurnedIn(id)), tostring(ns.acceptIndex and ns.acceptIndex[id])))
   elseif cmd == "gray" or cmd == "grey" then
     local n = tonumber(arg)
-    if n and n >= 0 and n <= 10 then ns.SetSetting("grayLevels", n) end
-    say("skipping quests " .. ns.Setting("grayLevels") .. " or more levels below you (0 = never)")
+    if arg == "grey" or arg == "gray" or arg == "auto" then ns.SetSetting("grayLevels", -1)
+    elseif n and n >= 0 and n <= 10 then ns.SetSetting("grayLevels", n) end
+    local g = ns.Setting("grayLevels")
+    say(g == -1 and "skipping quests once they turn grey" or g == 0 and "never skipping low quests"
+      or ("skipping quests " .. g .. " or more levels below you"))
   elseif cmd == "scale" then
     local s = tonumber(arg)
     if s and s >= 0.6 and s <= 1.6 then ns.SetSetting("scale", s); ns.ApplyScale() end
+  elseif cmd == "height" then
+    local h = tonumber(arg)
+    if h and h >= 150 and h <= 900 then ns.SetSetting("maxHeight", math.floor(h)) end
+    if ns.PreviewMaxHeight then ns.PreviewMaxHeight() end
+    say(("panel max height %d px (it scrolls when there is more)"):format(ns.Setting("maxHeight")))
   elseif cmd == "lock" or cmd == "unlock" then
     ns.SetSetting("locked", cmd == "lock")
-  elseif cmd == "support" or cmd == "kofi" or cmd == "coffee" or cmd == "donate" then
-    ns.ShowSupport()
   else
     for _, l in ipairs(HELP) do say(l) end
   end

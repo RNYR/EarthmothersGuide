@@ -152,21 +152,18 @@ local function buildPage(parent, name)
   title:SetPoint("TOPLEFT", 16, -14)
   local sub = label(p, c(C.dim, "1-60 Tauren Druid route for WoW: Forever. Tick the box beside a quest on the panel to skip it, or Done to continue a note; right-click the panel to open this page."))
   sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
-  local support = button(p, "Buy me a coffee", 120, function() if ns.ShowSupport then ns.ShowSupport() end end)
-  support:SetPoint("TOPLEFT", p, "TOPLEFT", 12 + 664 - 120, -12)
 
   -- Options ------------------------------------------------------------------------------
   local PAGE_W = 664
   box(p, 12, -52, PAGE_W, 156)
   local checks = {
     checkbox(p, "Show guide panel", "shown", function(v) ns.ShowPanel(v) end),
-    checkbox(p, "Include dungeon steps", "dungeons"),
     checkbox(p, "Show direction arrow", "arrow", function(v) if v then ns.SetWaypoint(ns.Current()) else ns.ClearArrow() end end),
     checkbox(p, "Set Blizzard map pin", "waypoints", function(v) if v then ns.SetWaypoint(ns.Current()) else ns.ClearMapPin() end end),
     checkbox(p, "Lock panel position", "locked"),
     checkbox(p, "Compact quest list", "compact"),
     checkbox(p, "Show carried quests", "showCarried"),
-    checkbox(p, "Quest item button", "itemButton", function() ns.UpdateItemButton() end),
+    checkbox(p, "Quest item buttons", "itemButton", function() ns.Refresh() end),
     checkbox(p, "Include profession quests", "professions"),
     checkbox(p, "Replace Blizzard's quest tracker", "hideTracker", function() ns.UpdateBlizzardTracker() end),
   }
@@ -184,12 +181,20 @@ local function buildPage(parent, name)
     end,
     function(v) return math.floor(v * 100 + 0.5) .. "%" end)
   scale:SetPoint("TOPLEFT", p, "TOPLEFT", 404, -58)
-  local gray = stepper(p, "Skip quests below you by",
+  local gray = stepper(p, "Skip quests below you",
     function() return ns.Setting("grayLevels") or 0 end,
-    function(d) ns.SetSetting("grayLevels", math.max(0, math.min(10, (ns.Setting("grayLevels") or 0) + d))) end,
-    function(v) return v == 0 and "never" or (v .. " levels") end)
+    function(d) ns.SetSetting("grayLevels", math.max(-1, math.min(10, (ns.Setting("grayLevels") or 0) + d))) end,
+    function(v) return v == -1 and "when grey" or v == 0 and "never" or ("by " .. v .. " levels") end)
   gray:SetPoint("TOPLEFT", scale, "BOTTOMLEFT", 0, -2)
-  p.steppers = { scale, gray }
+  local height = stepper(p, "Panel max height",
+    function() return ns.Setting("maxHeight") or 450 end,
+    function(d)
+      ns.SetSetting("maxHeight", math.max(150, math.min(900, (ns.Setting("maxHeight") or 450) + d * 25)))
+      if ns.PreviewMaxHeight then ns.PreviewMaxHeight() end   -- outline on the panel for a moment
+    end,
+    function(v) return v .. " px" end)
+  height:SetPoint("TOPLEFT", gray, "BOTTOMLEFT", 0, -2)
+  p.steppers = { scale, gray, height }
 
   local find = button(p, "Find my place", 120, function() ns.InitPosition(true); p:Refresh(true) end)
   find:SetPoint("TOPLEFT", p, "TOPLEFT", 20, -180)

@@ -1,15 +1,19 @@
--- Earthmother's Guide: quest item button.
+-- Earthmother's Guide: quest item buttons.
 -- Copyright (C) 2026 Vard Ruun. Licensed under GPL-3.0-only; see LICENSE and NOTICE.md.
--- When a quest in the current step has a usable quest item (the kind the quest log shows a
--- button for), a button appears under the guide panel. Click it to use the item.
--- It is a secure button, so it can only be shown, moved or changed out of combat; changes
--- wait until combat ends.
+-- A quest on the panel that has a usable quest item (the kind Blizzard's quest tracker shows a
+-- button for) gets a small button with the item's icon at the right end of its row. Click it
+-- to use the item.
+--
+-- The buttons are secure, so they can only be shown, moved or changed out of combat. They are
+-- anchored to UIParent, not to the panel, so the panel itself stays free to move and grow in
+-- combat; if it does, the buttons catch up as soon as combat ends.
 
 local ADDON, ns = ...
 ns = ns or _G.EarthmothersGuide
 
-local btn
+local pool = {}
 local pending = false
+local ICON = 22
 
 local function call(fn, ...)
   if not fn then return nil end
@@ -19,7 +23,7 @@ end
 
 local function inCombat() return InCombatLockdown and InCombatLockdown() end
 
--- Item link and icon for a quest's special item, or nil.
+-- Item link, icon and count for a quest's special item, or nil.
 local function questItem(questID)
   local idx = C_QuestLog and call(C_QuestLog.GetLogIndexForQuestID, questID)
   if not idx or idx <= 0 then return nil end
@@ -29,92 +33,88 @@ local function questItem(questID)
   local id = tonumber(link:match("item:(%d+)"))
   local count = id and (call(C_Item and C_Item.GetItemCount, id) or call(GetItemCount, id))
   if count ~= nil and count <= 0 then return nil end
-  return link, icon
+  return link, icon, count
 end
 ns.QuestItem = questItem
 
-local function create()
-  btn = CreateFrame("Button", "EarthmothersGuideItemButton", UIParent, "SecureActionButtonTemplate,BackdropTemplate")
-  btn:SetSize(32, 32)
-  btn:SetClampedToScreen(true)
-  btn:RegisterForClicks("AnyUp", "AnyDown")
-  if btn.SetBackdrop then
-    btn:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 10 })
-    btn:SetBackdropBorderColor(0.55, 0.42, 0.24, 1)
+local function newButton(i)
+  local b = CreateFrame("Button", "EarthmothersGuideItemButton" .. i, UIParent,
+    "SecureActionButtonTemplate,BackdropTemplate")
+  b:SetSize(ICON, ICON)
+  b:SetFrameStrata("MEDIUM")
+  b:RegisterForClicks("AnyUp", "AnyDown")
+  if b.SetBackdrop then
+    b:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 8 })
+    b:SetBackdropBorderColor(0.55, 0.42, 0.24, 1)
   end
-  btn.icon = btn:CreateTexture(nil, "ARTWORK")
-  btn.icon:SetPoint("TOPLEFT", 3, -3)
-  btn.icon:SetPoint("BOTTOMRIGHT", -3, 3)
-  btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-  btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  btn.label:SetPoint("LEFT", btn, "RIGHT", 5, 0)
-  btn:SetScript("OnEnter", function(self)
+  b.icon = b:CreateTexture(nil, "ARTWORK")
+  b.icon:SetPoint("TOPLEFT", 2, -2)
+  b.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+  b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+  b.count:SetPoint("BOTTOMRIGHT", -1, 1)
+  b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  b:SetScript("OnEnter", function(self)
     if self.link and GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       pcall(GameTooltip.SetHyperlink, GameTooltip, self.link)
       GameTooltip:Show()
     end
   end)
-  btn:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-  btn:Hide()
+  b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  b:Hide()
+  pool[i] = b
+  return b
 end
 
--- Place the button just under the guide panel's bottom-left corner. Anchored to UIParent (not
--- the panel) so the panel stays freely movable in combat.
-local function place()
-  local panel = _G.EarthmothersGuideFrame
-  if not panel or not panel.GetLeft or not panel:GetLeft() then return end
-  local s = panel:GetEffectiveScale() / UIParent:GetEffectiveScale()
-  local left, bottom, top = panel:GetLeft() * s, panel:GetBottom() * s, panel:GetTop() * s
-  btn:ClearAllPoints()
-  if bottom - 40 < 0 then
-    -- panel sits at the bottom of the screen: put the button above it instead
-    btn:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left, top + 4)
-  else
-    btn:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, bottom - 4)
-  end
-end
-
-function ns.PlaceItemButton()
-  if btn and btn:IsShown() and not inCombat() then place() end
-end
-
-function ns.UpdateItemButton()
+-- Put a button beside every visible quest row that has an item; hide the rest.
+function ns.UpdateItemButtons()
   if inCombat() then pending = true return end
   pending = false
-  if not btn then create() end
-  local step = ns.Current()
-  local link, icon, quest
   local panel = _G.EarthmothersGuideFrame
-  local panelShown = panel and panel:IsShown() and ns.Setting("shown") ~= false
-  if ns.Setting("itemButton") and panelShown and step and step.q then
-    -- the quest the arrow is leading to comes first
-    local order = {}
-    local target = panel and panel.arrowQuest
-    if target then order[1] = target end
-    for _, q in ipairs(step.q) do if q ~= target then order[#order + 1] = q end end
-    for _, q in ipairs(order) do
-      if ns.IsQuestInLog(q) and not ns.IsQuestReady(q) then
-        link, icon = questItem(q)
-        if link then quest = q break end
+  local used = 0
+  if panel and panel:IsShown() and ns.Setting("shown") ~= false and ns.Setting("itemButton") and panel.rows then
+    local viewTop = panel.scroll and panel.scroll:GetTop()
+    local viewBottom = panel.scroll and panel.scroll:GetBottom()
+    for _, row in ipairs(panel.rows) do
+      local spec = row.used and row.spec
+      if spec and spec.q and spec.item and row:IsShown() then
+        local link, icon, count = questItem(spec.q)
+        local top, right = row:GetTop(), row:GetRight()
+        -- only rows you can see: a row scrolled out of view has no button
+        local visible = top and right and (not viewTop or (top <= viewTop + 1 and top - ICON >= (viewBottom or 0) - 1))
+        if link and visible then
+          used = used + 1
+          local b = pool[used] or newButton(used)
+          b.link = link
+          b:SetAttribute("type", "item")
+          b:SetAttribute("item", link)
+          b.icon:SetTexture(icon)
+          b.count:SetText((count and count > 1) and count or "")
+          b:SetScale((panel:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1))
+          b:ClearAllPoints()
+          -- same units as the row (the button has the panel's scale): its top-right corner
+          b:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", right, top)
+          b:SetFrameLevel((panel:GetFrameLevel() or 0) + 10)
+          b:Show()
+        end
       end
     end
   end
-  if not link then
-    btn:Hide()
-    return
-  end
-  btn.link = link
-  btn:SetAttribute("type", "item")
-  btn:SetAttribute("item", link)
-  btn.icon:SetTexture(icon)
-  btn.label:SetText("|cffd9b77a" .. ((step.qn and step.qn[quest]) or "") .. "|r")
-  place()
-  btn:Show()
+  for i = used + 1, #pool do pool[i]:Hide() end
 end
+-- older names, still used by settings and tests
+ns.UpdateItemButton = ns.UpdateItemButtons
+ns.PlaceItemButton = ns.UpdateItemButtons
 
-ns.OnChange(function() ns.UpdateItemButton() end)
+ns.OnChange(function() ns.UpdateItemButtons() end)
 
 local f = CreateFrame("Frame")
 f:RegisterEvent("PLAYER_REGEN_ENABLED")
-f:SetScript("OnEvent", function() if pending then ns.UpdateItemButton() end end)
+f:RegisterEvent("BAG_UPDATE_DELAYED")
+f:SetScript("OnEvent", function(_, event)
+  if event == "PLAYER_REGEN_ENABLED" then
+    if pending then ns.UpdateItemButtons() end
+  else
+    ns.UpdateItemButtons()   -- item counts changed
+  end
+end)

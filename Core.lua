@@ -11,8 +11,8 @@ ns.chapters = {}
 ns.steps = {}        -- flattened list of all steps, in route order
 ns.listeners = {}    -- callbacks fired when the current step or its state changes
 
-local DEFAULTS = { dungeons = true, scale = 1, locked = false, shown = true,
-                   waypoints = true, arrow = true, grayLevels = 6,
+local DEFAULTS = { scale = 1, maxHeight = 450, locked = false, shown = true,
+                   waypoints = true, arrow = true, grayLevels = -1,
                    compact = false, showCarried = true, itemButton = true, professions = true,
                    hideTracker = true }
 
@@ -131,6 +131,22 @@ function ns.Build()
   ns.guideHash = tostring(h)
   -- quest ID -> index of the step where the guide picks it up / hands it in
   ns.acceptIndex, ns.turninIndex = {}, {}
+  -- per quest: its level, whether it is a class quest, and the routed quests it unlocks
+  ns.questLevel, ns.classQuest, ns.dependents = {}, {}, {}
+  for _, step in ipairs(ns.steps) do
+    if step.t == "accept" and step.q then
+      for _, q in ipairs(step.q) do
+        ns.questLevel[q] = (step.qlv and step.qlv[q]) or step.ql
+        if step.cls then ns.classQuest[q] = true end
+        for _, list in ipairs({ step.pre and step.pre[q] or {}, step.preAll and step.preAll[q] or {} }) do
+          for _, p in ipairs(list) do
+            ns.dependents[p] = ns.dependents[p] or {}
+            table.insert(ns.dependents[p], q)
+          end
+        end
+      end
+    end
+  end
   for i, step in ipairs(ns.steps) do
     if step.t == "accept" and step.q then
       for _, q in ipairs(step.q) do ns.acceptIndex[q] = ns.acceptIndex[q] or i end
@@ -155,11 +171,9 @@ function ns.SetSetting(key, value)
   ns.Refresh()
 end
 
--- A step is filtered out (skipped automatically) when it is a dungeon step and dungeon steps are
--- off, or the player has outlevelled that dungeon.
---
--- Quest steps are also filtered when none of their quests are in your log and either
---   * the quests are grey for you (quest level <= your level - grayLevels), or
+-- Quest steps are filtered (skipped automatically) when none of their quests are in your log and
+--   * the quests are grey for you (the game's grey rule by default, or a fixed number of levels
+--     below you: the grayLevels setting), or
 --   * the guide would have picked them up before the point where you started using it.
 -- Quests already in your log are never filtered, so nothing you are carrying gets lost.
 local QUEST_STEP = { accept = true, complete = true, turnin = true }
@@ -185,12 +199,37 @@ end
 -- quest you handed in or finished, per your quest history) are skipped, so jumping back a
 -- chapter (e.g. for a druid form quest) doesn't mean clicking through old travel steps.
 local NON_QUEST = { zone = true, train = true, note = true, bind = true, ["goto"] = true, level = true, spell = true }
+-- It walks the whole route, so while quest events stream in (every kill updates the log) it is
+-- worked out at most once a second, with a refresh queued for the last change.
 function ns.ProvenIndex()
   if ns.provenGen ~= ns.questGen then
-    ns.provenGen = ns.questGen
-    ns.proven = ns.logReady and (ns.FindResumeIndex(1, #ns.steps, true) - 1) or 0
+    local t = GetTime and GetTime()
+    if not t or not ns.provenAt or t - ns.provenAt >= 1 then
+      ns.provenGen, ns.provenAt = ns.questGen, t
+      ns.proven = ns.logReady and (ns.FindResumeIndex(1, #ns.steps, true) - 1) or 0
+    elseif not ns.provenRetry and C_Timer and C_Timer.After then
+      ns.provenRetry = true
+      C_Timer.After(1, function() ns.provenRetry = false; ns.Refresh() end)
+    end
   end
   return ns.proven or 0
+end
+
+-- The game's grey rule (Classic era): quests at or below this level give almost no XP.
+function ns.GreyLevel(level)
+  if level <= 5 then return 0 end
+  if level <= 39 then return level - 5 - math.floor(level / 10) end
+  if level <= 59 then return level - 1 - math.floor(level / 5) end
+  return level - 9
+end
+
+-- Quests at or below the returned level are skipped: grayLevels -1 = when grey (default),
+-- 0 = never, N = N or more levels below you.
+function ns.SkipBelowLevel(level)
+  local gray = ns.Setting("grayLevels")
+  if gray == -1 then return ns.GreyLevel(level) end
+  if gray and gray > 0 then return level - gray end
+  return nil
 end
 
 function ns.IsFiltered(step)
@@ -203,17 +242,13 @@ function ns.IsFiltered(step)
     for _, q in ipairs(step.q or {}) do if ns.IsQuestTurnedIn(q) then return false end end
     return true
   end
-  if step.d and not anyInLog(step) then
-    -- dungeon steps for quests you still carry stay, even when dungeons are off or outlevelled
-    if not ns.Setting("dungeons") then return true end
-    if step.dmax and level > step.dmax then
-      return true
-    end
-  end
+  -- Dungeon steps are always part of the route (their quests are a big share of the XP), but only
+  -- while you are inside the dungeon's level range: the group finder queues you only then. Steps
+  -- for dungeon quests you already carry stay.
+  if step.d and step.dmax and level > step.dmax and not anyInLog(step) then return true end
   if QUEST_STEP[step.t] and step.q and #ns.StepQuests(step) == 0 then return true end
   if QUEST_STEP[step.t] and step.q and not step.cls and not anyInLog(step) then
-    local gray = ns.Setting("grayLevels")
-    if gray and gray > 0 and step.ql and step.ql > 0 and step.ql <= level - gray then return true end
+    -- (grey quests are left out one by one in ns.QuestHidden; a step with none left is skipped above)
     if skippedBeforeStart(step) then return true end
   end
   return false
@@ -233,17 +268,46 @@ function ns.SetSkipped(q, skipped)
   EarthmothersGuideCharDB = EarthmothersGuideCharDB or {}
   EarthmothersGuideCharDB.skipped = EarthmothersGuideCharDB.skipped or {}
   EarthmothersGuideCharDB.skipped[q] = skipped and true or nil
+  ns.skipGen = (ns.skipGen or 0) + 1
   ns.manualMove = false
   ns.Refresh()
 end
 
 function ns.ClearSkips()
   if EarthmothersGuideCharDB then EarthmothersGuideCharDB.skipped = nil end
+  ns.skipGen = (ns.skipGen or 0) + 1
   ns.Refresh()
+end
+
+-- A quest is worth doing when it is not grey for you, or when it unlocks a routed quest that
+-- is (a grey chain start whose later parts still give XP). Class quests always are.
+local worthCache, worthKey = {}, nil
+function ns.QuestWorthDoing(q)
+  local level = ns.PlayerLevel()
+  local key = table.concat({ level, tostring(ns.Setting("grayLevels")), ns.questGen or 0, ns.skipGen or 0 }, ":")
+  if key ~= worthKey then worthCache, worthKey = {}, key end
+  local limit = ns.SkipBelowLevel(level)
+  local function worth(id, depth)
+    if worthCache[id] ~= nil then return worthCache[id] end
+    local r = false
+    local lv = ns.questLevel and ns.questLevel[id]
+    if (ns.classQuest and ns.classQuest[id]) or not limit or not lv or lv <= 0 or lv > limit then
+      r = true
+    elseif depth < 30 then
+      for _, d in ipairs(ns.dependents and ns.dependents[id] or {}) do
+        if not ns.IsSkipped(d) and not ns.IsQuestTurnedIn(d) and worth(d, depth + 1) then r = true break end
+      end
+    end
+    worthCache[id] = r
+    return r
+  end
+  return worth(q, 0)
 end
 
 function ns.QuestHidden(step, q)
   if ns.IsSkipped(q) then return true end
+  -- grey for you and leading to nothing worth doing (quests in your log always stay)
+  if not step.cls and not ns.QuestWorthDoing(q) and not ns.IsQuestInLog(q) then return true end
   if step.t == "accept" and ns.logReady and not ns.IsQuestInLog(q) and ns.PrereqLost(step, q) then
     return true
   end
@@ -254,19 +318,29 @@ end
 -- A quest whose prerequisite can no longer happen: the prerequisite is not done and not in your
 -- log, and the guide's step for picking it up is behind you or skipped (an optional item quest
 -- you never looted, a grey quest, one from before your start point).
-function ns.PrereqLost(step, q)
-  local pre = step.pre and step.pre[q]
-  if not pre then return false end
-  for _, p in ipairs(pre) do
-    if ns.IsQuestTurnedIn(p) or ns.IsQuestInLog(p) then return false end
-  end
-  for _, p in ipairs(pre) do
-    local ai = ns.acceptIndex and ns.acceptIndex[p]
-    if not ai then return false end                        -- not ours: can't tell, keep it
-    local ast = ns.steps[ai]
-    if ai >= (ns.index or 1) and not ns.IsFiltered(ast) then return false end
-  end
+-- One prerequisite can no longer happen: not done, not carried, and its pickup in the route is
+-- behind you or skipped. A prerequisite the route never picks up can't be judged: kept.
+local function prereqGone(p)
+  if ns.IsQuestTurnedIn(p) or ns.IsQuestInLog(p) then return false end
+  local ai = ns.acceptIndex and ns.acceptIndex[p]
+  if not ai then return false end
+  if ai >= (ns.index or 1) and not ns.IsFiltered(ns.steps[ai]) then return false end
   return true
+end
+
+-- step.pre[q]: any one of these unlocks q; step.preAll[q]: all of them are needed.
+function ns.PrereqLost(step, q)
+  local any = step.pre and step.pre[q]
+  if any and #any > 0 then
+    local lost = true
+    for _, p in ipairs(any) do if not prereqGone(p) then lost = false break end end
+    if lost then return true end
+  end
+  local all = step.preAll and step.preAll[q]
+  if all then
+    for _, p in ipairs(all) do if prereqGone(p) then return true end end
+  end
+  return false
 end
 
 -- Quests of a step that are part of the route for you right now.
@@ -646,8 +720,16 @@ function ns.Next()
   if (ns.index or 1) >= #ns.steps then return end   -- the last step has nothing after it
   local fromManual = ns.IsManual(ns.Current())
   local i = (ns.index or 1) + 1
-  -- skip steps that are filtered out or already finished, so a skip never lands on an empty step
-  while i < #ns.steps and (ns.IsFiltered(ns.steps[i]) or ns.IsStepDone(ns.steps[i])) do i = i + 1 end
+  -- skip steps that are filtered out or already finished, so a skip never lands on an empty step;
+  -- each is judged as if you stood on it (a hand-in counts as done once its pickup is behind you)
+  local saved = ns.index
+  while i < #ns.steps do
+    ns.index = i
+    local st = ns.steps[i]
+    if not (ns.IsFiltered(st) or ns.IsStepDone(st)) then break end
+    i = i + 1
+  end
+  ns.index = saved
   if fromManual then
     -- continuing a note or training step is normal progress, not a manual jump: the guide
     -- keeps advancing on its own (and skips steps that are already finished)
@@ -791,14 +873,34 @@ local events = {
 local enteredAt, logUpdates = nil, 0
 local function now() return GetTime and GetTime() or 0 end
 local needUpdates = 2   -- quest log updates to wait for: 2 after a fresh login, 1 after /reload
+local minWait = 2       -- seconds after entering the world: 2 after a fresh login, 0 after /reload
+
+-- The log has loaded: everything worked out before this from an empty log is stale now.
+local function setLogReady()
+  if ns.logReady then return end
+  ns.logReady = true
+  ns.questGen = (ns.questGen or 0) + 1        -- drops caches built while the log was empty
+  -- a step you moved to by hand: whether it was already done can only be told now
+  if ns.manualMove then
+    local cur = ns.Current()
+    ns.manualStepDone = cur and ns.IsStepDone(cur) or false
+  end
+end
+ns.SetLogReady = setLogReady
+
+local function logLooksReady()
+  return enteredAt ~= nil and logUpdates >= needUpdates and now() - enteredAt >= minWait
+end
+-- only updates after entering the world count; those before it come from the loading screen
 local function noteLogUpdate()
+  if not enteredAt then return end
   logUpdates = logUpdates + 1
-  if enteredAt and logUpdates >= needUpdates then ns.logReady = true end
+  if logLooksReady() then setLogReady() end
 end
 local function whenLogReady(fn, tries)
   tries = tries or 0
-  if ns.logReady or not (C_Timer and C_Timer.After) then ns.logReady = true; fn(); return end
-  if tries >= 10 then ns.logReady = true; fn(); return end
+  if not ns.logReady and logLooksReady() then setLogReady() end
+  if ns.logReady or not (C_Timer and C_Timer.After) or tries >= 10 then setLogReady(); fn(); return end
   C_Timer.After(1, function() whenLogReady(fn, tries + 1) end)
 end
 ns.WhenLogReady = whenLogReady
@@ -825,6 +927,7 @@ function ns.OnEvent(_, event, arg1)
     -- PLAYER_ENTERING_WORLD(isInitialLogin, isReloadingUi): the first quest log update after a
     -- fresh login can still be stale, so wait for two then; after /reload one is enough
     needUpdates = (arg1 == true) and 2 or 1
+    minWait = (arg1 == true) and 2 or 0
     if ns.index then
       local manualSave = EarthmothersGuideCharDB.manual
       ns.SetIndex(ns.index, manualSave)

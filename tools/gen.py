@@ -78,7 +78,8 @@ SOD_RANGE = range(76000, 84000)
 # Factions a Tauren starts Hostile with: any minimum standing with them (even Neutral) gates a quest.
 HOSTILE_START = {87, 92, 93, 576}   # Bloodsail Buccaneers, Gelkis, Magram, Timbermaw Hold
 
-LOG_CAP = 20   # quests you can carry at once (Classic-era limit; kept as the safe bound)
+LOG_CAP = 20   # quests you can carry at once (the game's limit). One under it would be safer, but
+               # costs late-route sections their last quests (a section stops when the log is full)
 MAX_GRIND = 3  # at most this many levels of grinding before a quest; bigger gaps wait for a later pass
 
 
@@ -278,6 +279,9 @@ def instance_areas(q):
 
 
 def has_objectives(q):
+    if (q.get('special') or 0) & 2 or any(isinstance(t, str) and t.strip().startswith('Escort')
+                                          for t in q.get('objText') or []):
+        return True   # escort or event quest: something to do, though the database lists no objective
     obj = q.get('objectives')
     if isinstance(obj, dict):
         return any(obj.values())
@@ -330,6 +334,8 @@ class Builder:
         self.grinds = 0         # "grind to level N" steps added
         self.grind_xp = 0       # XP those grinds stand for
         self.chain_quests = set()   # class quests: handed in by their own steps, never by a sweep
+        self.trained = 0        # druid ranks trained up to this level
+        self.dungeon_fit = []   # (dungeon, lo, hi, simulated level when the route gets there)
 
     # ------------------------------------------------------------------ exclusive quests
     def on_accept(self, qid):
@@ -374,8 +380,15 @@ class Builder:
         tips = []
         if self.hearth and self.hearth['area'] == area and self.area != area:
             tips.append(f"Use your hearthstone (set to {self.hearth['place']}).")
-        if area in route.TRAVEL_TIPS:
-            tips.append(route.TRAVEL_TIPS[area])
+        cross = self.area is not None and route.continent(self.area) != route.continent(area)
+        tip = route.TRAVEL_TIPS.get(area)
+        if tip and tip.startswith('Zeppelin') and not cross:
+            tip = None   # a zeppelin tip only helps when you are coming from the other continent
+        if not tip and cross:
+            tip = ('Take the zeppelin from Undercity to Orgrimmar.' if route.continent(area) == 'K'
+                   else 'Take the zeppelin from Orgrimmar to Undercity.')
+        if tip:
+            tips.append(tip)
         return ' '.join(tips) or None
 
     def travel(self, steps, area, text):
@@ -399,6 +412,11 @@ class Builder:
             return
         s = dict(t='zone', text='Travel to ' + ZONE_NAMES.get(area, str(area)),
                  zoneName=ZONE_NAMES.get(area), zone=ZONE_NAMES.get(area))
+        if getattr(self, '_extra', None):
+            if getattr(self, '_block_entry', False):
+                self._block_entry = False   # the trip into a dungeon block stays untagged: it is kept
+            else:                           # even when the dungeon itself is skipped as outlevelled
+                s.update(self._extra)
         if AREA_TO_MAP.get(area):
             s['m'] = AREA_TO_MAP[area]
         tip = self.travel_tip(area)
@@ -407,6 +425,33 @@ class Builder:
         self.rep_tip(s, area)
         steps.append(s)
         self.area = area
+
+    def train_step(self, steps, lvl):
+        """A "train new ranks" step for level `lvl` (the simulated level when it is higher)."""
+        reached = self.char.level - self.char.level % 2
+        lvl = reached if reached < lvl else max(lvl, reached)   # never ahead of the level you have
+        if lvl <= self.trained or lvl < 2:
+            return   # already trained at this level or later
+        self.trained = lvl
+        where = 'Bloodhoof Village or Thunder Bluff' if lvl < 10 else 'Moonglade or Thunder Bluff'
+        s = dict(t='train', lvl=lvl, text=f'Level {lvl}: train new druid ranks ({where}).')
+        if lvl < 10:
+            # Teleport: Moonglade is learned at 10
+            s['tip'] = 'Gennia Runetotem trains druids in Bloodhoof Village; Thunder Bluff has trainers on the Elder Rise.'
+        elif self.area == route.THUNDER_BLUFF:
+            s['tip'] = 'You are in Thunder Bluff: the druid trainers are on the Elder Rise.'
+        else:
+            back = f" then hearth back to {self.hearth['place']}" if self.hearth else ' then hearth back'
+            s['tip'] = 'Quickest: cast Teleport: Moonglade and train with Loganaar in Nighthaven,' + back + '.'
+        steps.append(s)
+        if lvl >= 10 and self.area != route.THUNDER_BLUFF:
+            self.turnins(steps, {route.MOONGLADE})   # the Moonglade trip is also when Moonglade hand-ins happen
+
+    def catch_up_training(self, steps):
+        """Between sections: when the character has passed two or more trainer levels since the
+        last visit, train now instead of waiting for the route's next fixed training step."""
+        if self.char.level >= 10 and self.char.level - self.char.level % 2 >= self.trained + 4:
+            self.train_step(steps, self.char.level - self.char.level % 2)
 
     def rep_tip(self, s, area):
         """Attach a tip that replaces the normal one once you have a reputation standing."""
@@ -453,6 +498,22 @@ class Builder:
             return False
         return True
 
+    def worth_doing(self, pool):
+        """Quests in `pool` that are not grey for the character, plus grey ones that unlock one of
+        those (the start of a chain whose later parts are still worth doing)."""
+        grey = xpsim.grey_level(self.char.level)
+        keep = {p for p in pool if (Q[str(p)].get('level') or 0) > grey}
+        changed = True
+        while changed:
+            changed = False
+            for p in pool:
+                q = Q[str(p)]
+                for pre in list(q.get('preSingle') or []) + list(q.get('preGroup') or []):
+                    if p in keep and pre in pool and pre not in keep:
+                        keep.add(pre)
+                        changed = True
+        return keep
+
     def obtainable_later(self, q, pool):
         single = q.get('preSingle') or []
         group = q.get('preGroup') or []
@@ -474,6 +535,7 @@ class Builder:
         extra = {}
         if dungeon:
             extra = {'d': dungeon[0], 'dmin': dungeon[1], 'dmax': dungeon[2]}
+        self._extra = extra
         for _round in range(200):
             ready = [p for p in pool if p not in self.used and p not in self.blocked
                      and self.prereq_ok(Q[str(p)], pool)]
@@ -483,7 +545,7 @@ class Builder:
                 # real players do - instead of dropping the quests.
                 def need(p):
                     q = Q[str(p)]
-                    return max(q.get('reqLevel') or 0, (q.get('level') or 0) - 3)
+                    return max(q.get('reqLevel') or 0, (q.get('level') or 0) - 4)   # up to 4 levels above you
                 now = [p for p in ready if need(p) <= self.char.level]
                 if not now and ready:
                     target = min(need(p) for p in ready)
@@ -500,6 +562,7 @@ class Builder:
                 outside = [p for p in ready if not any(pt[0] in inside for pt in (givers(Q[str(p)].get('start')) or [(0, 0, 0, [])])[0][3])]
                 if outside:
                     ready = outside
+            ready = [p for p in ready if p in self.worth_doing(pool)]
             free = LOG_CAP - len(self.pending)
             if free <= 0:
                 self.log_full += 1
@@ -519,7 +582,18 @@ class Builder:
                 by_giver.setdefault((kind, gid, gname), {'pt': pt, 'q': []})['q'].append(qid)
             if not by_giver:
                 break
-            ordered, self.pos = greedy([(k, v['pt']) for k, v in by_giver.items()], self.pos)
+            items = [(k, v['pt']) for k, v in by_giver.items()]
+            gate = getattr(self, '_gateway', None) or set()
+            here = self.pos[0] if self.pos else None
+            if gate and not any(pt and pt[0] == here for _k, pt in items):
+                # arriving from elsewhere: the hub on the zone's edge (in a giver zone) comes first
+                first = [it for it in items if it[1] and it[1][0] in gate]
+                rest = [it for it in items if it not in first]
+                o1, pos1 = greedy(first, self.pos)
+                o2, self.pos = greedy(rest, pos1)
+                ordered = o1 + o2
+            else:
+                ordered, self.pos = greedy(items, self.pos)
             for (kind, gid, gname), pt in ordered:
                 qs = sorted(by_giver[(kind, gid, gname)]['q'], key=lambda i: (Q[str(i)].get('level') or 0, i))
                 if pt and kind != 'i':
@@ -543,7 +617,9 @@ class Builder:
             if dungeon:
                 todo = [q for q in accepted if has_objectives(Q[str(q)])]
                 if todo:
-                    steps.append(dict(t='complete', q=todo, text='Run ' + dungeon[0] + ' and finish its quests',
+                    run_text = ('Run ' + dungeon[0] + ' and finish its quests') if _round == 0 else \
+                        f'Still in {dungeon[0]}: finish these quests'   # picked up inside, same run
+                    steps.append(dict(t='complete', q=todo, text=run_text,
                                       obj={q: short_obj(Q[str(q)]) for q in todo}, **extra))
             else:
                 items = []
@@ -560,6 +636,8 @@ class Builder:
                         if 'm' in lf:
                             pts[qid] = {'m': lf['m'], 'x': lf['x'], 'y': lf['y']}
                     first = next((pt for _, pt in ordered_c if pt), None)
+                    if first:
+                        self.move_to(steps, first[0], inside)
                     text = (short_obj(Q[str(qs[0])]) or qname(qs[0])) if len(qs) == 1 else \
                         f'Do these {len(qs)} quests in the area - the arrow leads to the nearest'
                     steps.append(dict(t='complete', q=qs, text=text, pts=pts,
@@ -575,6 +653,7 @@ class Builder:
             for zone_set in turnin_order:
                 self.turnins(steps, zone_set, extra, only=set(pool))
         self._inside = None
+        self._extra = None
         return steps
 
     def turnins(self, steps, areas, extra=None, only=None, box=None):
@@ -666,6 +745,8 @@ class Builder:
             ch['_start_level'] = self.char.level
             for seg in ch['segments']:
                 kind = seg['type']
+                if kind in ('quests', 'dungeon'):
+                    self.catch_up_training(steps)
                 if kind == 'quests':
                     # questing happens in the section's zones; city hand-ins wait for one visit at the end
                     areas = set(seg['zones']) | set(seg.get('giver_zones', []))
@@ -676,13 +757,25 @@ class Builder:
                         self.stats[f"{ch['title']} / {ZONE_NAMES.get(seg['zones'][0])} #{len(self.stats)}"] = 0
                         continue
                     self.detours(steps)
-                    if self.area is not None and self.area not in seg['zones']:
+                    # an edge hub in a giver zone (the Bulwark for the Plaguelands, Tarren Mill for
+                    # Alterac) where the section's quests can start: go there first, or stay there
+                    edge = [z for z in seg.get('giver_zones', [])
+                            if any((main_giver(Q[str(p)].get('start'), areas) or (0, 0, 0, []))[3]
+                                   and any(pt[0] == z for pt in main_giver(Q[str(p)].get('start'), areas)[3])
+                                   for p in pool)]
+                    if self.area is not None and self.area not in seg['zones'] and self.area in edge:
+                        pass   # already at the edge hub
+                    elif self.area is not None and self.area not in seg['zones'] and edge:
+                        self.travel(steps, edge[0], 'Travel to ' + ZONE_NAMES.get(edge[0], ''))
+                    elif self.area is not None and self.area not in seg['zones']:
                         self.travel(steps, seg['zones'][0], 'Travel to ' + ZONE_NAMES.get(seg['zones'][0], ''))
                     elif self.area is None:
                         self.area = seg['zones'][0]
                     if seg.get('note'):
                         steps.append(dict(t='note', text=seg['note']))
+                    self._gateway = set(seg.get('giver_zones', []))
                     self.quest_block(steps, pool, areas, box=seg.get('box'))
+                    self._gateway = set()
                     left = [q for q in pool if q not in self.used and q not in self.done and q not in self.blocked
                             and (Q[str(q)].get('reqLevel') or 0) > self.char.level]
                     if left:
@@ -695,6 +788,8 @@ class Builder:
                     self.stats[f"{ch['title']} / {','.join(ZONE_NAMES.get(z, str(z)) for z in seg['zones'])} #{len(self.stats)}"] = len(pool)
                 elif kind == 'dungeon':
                     name, lo, hi = seg['name'], seg['levels'][0], seg['levels'][1]
+                    # the group finder queues you only inside the dungeon's range: report the fit
+                    self.dungeon_fit.append((name, lo, hi, round(self.char.exact, 1)))
                     self.detours(steps)
                     ids = list(seg['quests'])
                     dz = set(seg.get('zones', []))
@@ -709,6 +804,11 @@ class Builder:
                         ids += sorted(int(k) for k, q in Q.items()
                                       if int(k) not in route.EXCLUDE and dungeon_only(q) and instance_areas(q) & dzp)
 
+                    # the dungeon's own continent (from the zones it is handed in / reached from)
+                    known = [z for z in list(seg.get('turnin_zones', [])) + [parent(z) for z in dz]
+                             if z in route.ALL_AREAS]
+                    dcont = route.continent(known[0]) if known else None
+
                     def dungeon_ok(i):
                         q = Q.get(str(i))
                         if not q or not available(q) or i in self.used or i in self.done or i in self.blocked:
@@ -718,19 +818,33 @@ class Builder:
                         lvl = q.get('level') or 0
                         if lvl > hi or (q.get('reqLevel') or 0) > hi:
                             return False  # too high for this run
+                        if lvl and lvl <= xpsim.grey_level(self.char.level):
+                            return False  # grey by the time you get here
                         gs = givers(q.get('start'))
-                        # picked up near the dungeon (or inside it), not in a faraway city
-                        return bool(gs) and any(p[0] in near for p in gs[0][3]) and horde_ok(q, near)
+                        # picked up near the dungeon (or inside it), not in a faraway city, and
+                        # never on the other continent in the middle of a trip
+                        here = dcont
+                        return bool(gs) and any(p[0] in near and (here is None or p[0] not in route.ALL_AREAS
+                                                                  or route.continent(p[0]) == here)
+                                                for p in gs[0][3]) and horde_ok(q, near)
                     pool = [i for i in dict.fromkeys(ids) if dungeon_ok(i)]
                     pool = [i for i in pool if self.obtainable_later(Q[str(i)], pool)]
+                    if not pool:
+                        print(f'note: {name} has no quests left at level {self.char.level}; left out')
+                        continue
                     steps.append(dict(t='note', text=seg.get('note') or
                                       f'{name}: gather the quests below before you queue or form a group.',
                                       d=name, dmin=lo, dmax=hi))
                     # Hand in right after the run only near the dungeon; quests for faraway NPCs
                     # stay carried and are handed in the next time the route reaches that zone.
                     dareas = set(seg.get('turnin_zones', [])) | dzp
-                    order = [dzp] + [{z} for z in seg.get('turnin_zones', [])]
-                    self.quest_block(steps, pool, near | dzp, dungeon=(name, lo, hi), turnin_order=order[1:], inside=dzp)
+                    inside = {z for z in dzp if parent(z) not in route.ALL_AREAS} or dzp
+                    outside = [{z} for z in sorted(dzp - inside)]   # e.g. Gadgetzan for Zul'Farrak
+                    order = outside + [{z} for z in seg.get('turnin_zones', []) if {z} not in outside]
+                    # the way in is the block's first trip only if you arrive from elsewhere
+                    self._block_entry = self.area not in (near | dzp)
+                    self.quest_block(steps, pool, near | dzp, dungeon=(name, lo, hi), turnin_order=order, inside=inside)
+                    self._block_entry = False
                     if any(st.get('d') == name and st.get('t') == 'complete' for st in steps):
                         self.char.run_dungeon()   # the run's kill XP (an assumption, see xp.py)
                 elif kind == 'chain':
@@ -767,6 +881,10 @@ class Builder:
                         if s.get('x') is not None and s.get('zone'):
                             for ar, nm in ZONE_NAMES.items():
                                 if nm == s['zone'] and ar in route.ALL_AREAS:
+                                    # a class step in another zone gets a travel step first (the
+                                    # Moonglade and Thunder Bluff trips say how to get there)
+                                    if ar != self.area and ar not in route.TRAIN_AREAS and s['t'] != 'complete':
+                                        self.move_to(steps, ar)
                                     self.area = ar
                                     break
                         for qid in s.get('q', []):
@@ -788,6 +906,7 @@ class Builder:
                             else:
                                 self.turnins(steps, {z})
                 elif kind == 'bind':
+                    self.detours(steps)   # a city hand-in that is due: do it before moving on
                     if self.area is not None and self.area != seg['area']:
                         self.travel(steps, seg['area'], 'Travel to ' + seg['place'])
                     e = N.get(str(seg['npc'])) or {}
@@ -798,7 +917,11 @@ class Builder:
                                       npc=e.get('name'), bind=seg['place'], **self.loc_fields(pt)))
                     self.hearth = {'place': seg['place'], 'area': seg['area']}
                     self.area = seg['area']
+                elif kind == 'step' and seg['step'].get('t') == 'train':
+                    self.train_step(steps, seg['step'].get('lvl') or 0)
                 elif kind == 'step':
+                    if seg['step'].get('t') == 'zone':
+                        self.detours(steps)   # a city hand-in that is due: do it before moving on
                     s = dict(seg['step'])
                     if 'area' in s:
                         area = s.pop('area')
@@ -810,6 +933,11 @@ class Builder:
                                 s['m'] = AREA_TO_MAP[area]
                             s['zone'] = ZONE_NAMES.get(area)
                     steps.append(s)
+                    if s.get('t') == 'level' and (s.get('lvl') or 0) > self.char.level:
+                        # "Reach level N": the character gets there before going on (counted as grinding)
+                        target = s['lvl']
+                        self.grind_xp += sum(xpsim.XP_TO_NEXT[k] for k in range(self.char.level, target)) - self.char.xp
+                        self.char.level, self.char.xp = target, 0
                     if s.get('t') == 'zone' and 'area' in seg['step']:
                         area = seg['step']['area']
                         if 'tip' not in s:
@@ -819,19 +947,6 @@ class Builder:
                         self.rep_tip(s, area)
                         self.area = area
                         self.turnins(steps, {area})
-                    if s.get('t') == 'train':
-                        lvl = seg['step'].get('lvl') or 0
-                        if lvl < 10:
-                            # Teleport: Moonglade is learned at 10
-                            s['tip'] = 'Gennia Runetotem trains druids in Bloodhoof Village; Thunder Bluff has trainers on the Elder Rise.'
-                        elif self.area == route.THUNDER_BLUFF:
-                            s['tip'] = 'You are in Thunder Bluff: the druid trainers are on the Elder Rise.'
-                        else:
-                            back = f" then hearth back to {self.hearth['place']}" if self.hearth else ' then hearth back'
-                            s['tip'] = ('Quickest: cast Teleport: Moonglade and train with Loganaar in Nighthaven,'
-                                        + back + '.')
-                            # the Moonglade trip is also when Moonglade hand-ins happen
-                            self.turnins(steps, {route.MOONGLADE})
             ch['sim_levels'] = (ch.get('_start_level', 1), max(ch.get('_start_level', 1), min(60, self.char.level)))
             self.chapters.append((ch, steps))
         # Drop quests the route picks up but never hands in (deliveries to zones it never revisits).
@@ -844,7 +959,7 @@ class Builder:
                     s['q'] = [q for q in s['q'] if q not in drop]
                     if not s['q']:
                         continue
-                    for key in ('pts', 'obj', 'pre', 'prof'):
+                    for key in ('pts', 'obj', 'pre', 'preAll', 'prof'):
                         if isinstance(s.get(key), dict):
                             s[key] = {q: v for q, v in s[key].items() if q not in drop} or None
                             if s[key] is None:
@@ -881,14 +996,20 @@ class Builder:
                     if s.get('t') == 'accept':
                         # prerequisites, so the addon can skip a pickup whose prerequisite can no
                         # longer happen (an optional quest never looted, a grey or skipped quest)
-                        pre = {}
+                        pre, pre_all = {}, {}
                         for q in s['q']:
                             qq = Q.get(str(q)) or {}
-                            ids = list(qq.get('preSingle') or []) + list(qq.get('preGroup') or [])
-                            if ids:
-                                pre[q] = ids
+                            if qq.get('preSingle'):
+                                pre[q] = list(qq['preSingle'])      # any one of these
+                            if qq.get('preGroup'):
+                                pre_all[q] = list(qq['preGroup'])   # all of these
                         if pre:
                             s['pre'] = pre
+                        if pre_all:
+                            s['preAll'] = pre_all
+                    lv = {q: (Q[str(q)].get('level') or 0) for q in s['q']}
+                    if s.get('t') == 'accept' and len(set(lv.values())) > 1:
+                        s['qlv'] = lv   # each quest's own level (the addon judges grey per quest)
                     prof = {q: route.PROFESSION[q] for q in s['q'] if q in route.PROFESSION}
                     if prof:
                         s['prof'] = prof
@@ -899,7 +1020,7 @@ class Builder:
         return names
 
 
-KEY_ORDER = ['t', 'text', 'q', 'qn', 'npc', 'zone', 'm', 'x', 'y', 'zoneName', 'lvl', 'spell', 'd', 'dmin', 'dmax', 'ql', 'cls', 'pts', 'obj', 'prof', 'pre', 'bind', 'opt', 'tip', 'tipRep', 'radius']
+KEY_ORDER = ['t', 'text', 'q', 'qn', 'npc', 'zone', 'm', 'x', 'y', 'zoneName', 'lvl', 'spell', 'd', 'dmin', 'dmax', 'ql', 'cls', 'pts', 'obj', 'prof', 'pre', 'preAll', 'qlv', 'bind', 'opt', 'tip', 'tipRep', 'radius']
 
 
 def lua(v):
@@ -956,6 +1077,13 @@ if __name__ == '__main__':
                 log -= set(st['q'])
             peak = max(peak, len(log))
     print('largest quest log along the route:', peak)
+    print('dungeons (range, simulated level on arrival):')
+    for name, lo, hi, lvl in b.dungeon_fit:
+        flag = '' if lo <= lvl <= hi else ('  ABOVE RANGE' if lvl > hi else '  below range')
+        print(f'  {name:28s} {lo:2d}-{hi:2d}  at {lvl:4.1f}{flag}')
+    late = [n for n, _lo, hi, lvl in b.dungeon_fit if lvl > hi]
+    if late:
+        raise SystemExit(f'the route reaches these dungeons above their level range: {late}')
     if peak > LOG_CAP:
         raise SystemExit(f'quest log goes over {LOG_CAP} ({peak})')
     # --- simulated level along the route, from real Forever quest XP

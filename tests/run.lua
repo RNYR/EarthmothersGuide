@@ -170,15 +170,14 @@ for _, st in ipairs(ns.steps) do if st.d then dstep = st break end end
 check(dstep ~= nil, "route has dungeon steps")
 state.level = 10
 check(not ns.IsFiltered(dstep), "dungeon step shown when in range")
-ns.SetSetting("dungeons", false)
-check(ns.IsFiltered(dstep), "dungeon steps hidden when switched off")
-ns.SetSetting("dungeons", true)
+ns.SetSetting("dungeons", false)   -- an old saved setting from 1.0.x must not hide dungeons
+check(not ns.IsFiltered(dstep), "dungeon steps cannot be switched off")
 state.level = dstep.dmax + 1
-check(ns.IsFiltered(dstep), "outlevelled dungeon step is skipped")
+check(ns.IsFiltered(dstep), "dungeon step above the dungeon's range is skipped")
 state.level = 10
 
 -- slash commands do not error
-for _, cmd in ipairs({ "", "show", "next", "prev", "chapter 4", "dungeons off", "dungeons on", "way", "resume", "scale 1.2", "lock", "unlock", "support", "help" }) do
+for _, cmd in ipairs({ "", "show", "next", "prev", "chapter 4", "way", "resume", "scale 1.2", "lock", "unlock", "help" }) do
   local ok, e = pcall(SlashCmdList.EARTHMOTHERSGUIDE, cmd)
   check(ok, "/emg " .. cmd .. ": " .. tostring(e))
 end
@@ -206,14 +205,17 @@ state.log = {}
 -- grey quests: level 10 quest at level 25 is skipped, class quests never are
 local grey, cls
 for _, st in ipairs(ns.steps) do
-  if not grey and st.t == "accept" and st.ql and st.ql <= 12 and not st.cls then grey = st end
+  if not grey and st.t == "accept" and st.ql and st.ql <= 12 and not st.cls and not st.unlock then grey = st end
   if not cls and st.cls and st.t == "accept" then cls = st end
 end
 ns.startIndex = nil
 check(ns.IsFiltered(grey), "grey quest skipped at level 25")
+check(ns.GreyLevel(25) == 18 and ns.GreyLevel(45) == 35 and ns.GreyLevel(60) == 51, "the game's grey rule")
 ns.SetSetting("grayLevels", 0)
 check(not ns.IsFiltered(grey), "grey skipping can be turned off")
-ns.SetSetting("grayLevels", 6)
+ns.SetSetting("grayLevels", 24)
+check(not ns.IsFiltered(grey), "a fixed level gap can be set")
+ns.SetSetting("grayLevels", -1)
 check(not ns.IsFiltered(cls), "class quests are never skipped as grey")
 
 -- missing forms
@@ -238,7 +240,7 @@ state.level = ns.chapters[7].levels[1]
 ns.InitPosition(false)
 check(ns.Current().chapter.num >= 7, "at chapter 7's level: finished chapter 7 quests move the start there (got " .. ns.Current().chapter.num .. ")")
 state.level = 25
-for _, cmd in ipairs({ "status", "gray 4", "gray 6", "resume", "check 6128", "check" }) do
+for _, cmd in ipairs({ "status", "gray 4", "gray grey", "resume", "check 6128", "check" }) do
   local ok, e = pcall(SlashCmdList.EARTHMOTHERSGUIDE, cmd)
   check(ok, "/emg " .. cmd .. ": " .. tostring(e))
 end
@@ -347,11 +349,46 @@ ns.SetIndex(batchStep.index, true)
 ns.SetSetting("compact", true)
 check(pcall(ns.Fire), "compact checklist renders")
 ns.SetSetting("compact", false)
-check(_G.EarthmothersGuideItemButton and _G.EarthmothersGuideItemButton:IsShown(), "quest item button shows for a quest with an item")
-ns.SetSetting("itemButton", false)
-ns.UpdateItemButton()
-check(not _G.EarthmothersGuideItemButton:IsShown(), "quest item button can be switched off")
-ns.SetSetting("itemButton", true)
+-- give the mock panel real positions: rows stacked from y=500 down, the visible area 520..300
+do
+  local pf = _G.EarthmothersGuideFrame
+  pf.scroll.GetTop = function() return 520 end
+  pf.scroll.GetBottom = function() return 300 end
+  local y = 500
+  for _, row in ipairs(pf.rows) do
+    local top = y
+    row.GetTop = function() return top end
+    row.GetRight = function() return 310 end
+    y = y - 40
+  end
+  ns.UpdateItemButtons()
+  local b = _G.EarthmothersGuideItemButton1
+  check(b and b:IsShown(), "a quest with a usable item gets a button beside its row")
+  local itemRow
+  for _, row in ipairs(pf.rows) do if row.used and row.spec and row.spec.item then itemRow = row break end end
+  check(itemRow ~= nil, "the row of that quest makes room for the button")
+  -- a row scrolled out of view has no button
+  for _, row in ipairs(pf.rows) do row.GetTop = function() return 900 end end
+  ns.UpdateItemButtons()
+  check(not (b and b:IsShown()), "no item button for a row scrolled out of view")
+  for _, row in ipairs(pf.rows) do row.GetTop = function() return 500 end end
+  ns.SetSetting("itemButton", false)
+  ns.Fire()
+  check(not (b and b:IsShown()), "quest item buttons can be switched off")
+  ns.SetSetting("itemButton", true)
+  -- the panel never grows past "Panel max height": it scrolls instead
+  ns.SetSetting("maxHeight", 150)
+  ns.Fire()
+  check((pf.scrollMax or 0) >= 0, "scroll range is worked out")
+  local before = pf.scrollAt or 0
+  ns.ScrollPanel(10000)
+  check((pf.scrollAt or 0) == (pf.scrollMax or 0), "scrolling stops at the end")
+  ns.ScrollPanel(-10000)
+  check((pf.scrollAt or 0) == 0, "scrolling stops at the top")
+  check(pcall(ns.PreviewMaxHeight), "the max height preview shows without errors")
+  ns.SetSetting("maxHeight", 450)
+  ns.Fire()
+end
 ------------------------------------------------------------------------------ hand-ins and professions
 -- dungeon quests are picked up near the dungeon, not in faraway cities (no Undercity pickup for RFC)
 for _, st in ipairs(ns.steps) do
@@ -471,13 +508,10 @@ check(r <= lastProof + 1, ("knowing Teleport: Moonglade does not push the start 
 
 -- dungeon steps stay for quests you carry, even outlevelled or with dungeons off
 local dstep2
-for _, st in ipairs(ns.steps) do if st.d and st.t == "turnin" then dstep2 = st break end end
+for _, st in ipairs(ns.steps) do if st.d and st.t == "turnin" and not st.unlock then dstep2 = st break end end
 state.level = (dstep2.dmax or 20) + 5
 state.log[dstep2.q[1]] = true
 check(not ns.IsFiltered(dstep2), "outlevelled dungeon turn-in kept while the quest is in your log")
-ns.SetSetting("dungeons", false)
-check(not ns.IsFiltered(dstep2), "dungeons off still keeps a quest you carry")
-ns.SetSetting("dungeons", true)
 state.log = {}
 check(ns.IsFiltered(dstep2), "outlevelled dungeon step without the quest is skipped")
 
@@ -674,6 +708,21 @@ do
   check(t.shown, "hiding the guide panel brings Blizzard's tracker back")
   ns.ShowPanel(true)
   check(not t.shown, "showing the guide panel replaces it again")
+  -- giving it back in combat: shown at once when the game allows it (not protected) ...
+  t.protected = false
+  combat = true
+  SlashCmdList.EARTHMOTHERSGUIDE("tracker on")
+  check(t.alpha == 1 and t.shown, "an unprotected tracker comes back at once, even in combat")
+  combat = false
+  SlashCmdList.EARTHMOTHERSGUIDE("tracker off")
+  -- ... and once combat ends when it is protected
+  t.protected = true
+  combat = true
+  SlashCmdList.EARTHMOTHERSGUIDE("tracker on")
+  check(not t.shown, "a protected tracker waits for the end of combat")
+  combat = false
+  InCombatLockdown = function() return false end
+  SlashCmdList.EARTHMOTHERSGUIDE("tracker off")
 end
 
 ------------------------------------------------------------------------------ optional item-started quests
@@ -920,6 +969,165 @@ do
   fire("PLAYER_LEVEL_UP", 18)
   check(ns.PlayerLevel() == 18, "level-up is noticed before UnitLevel catches up")
   ns.levelUp = nil
+end
+
+------------------------------------------------------------------------------ 1.0.2 route rules
+do
+  ns.logReady = true; ns.startIndex = nil
+  state.log, state.ready, state.done = {}, {}, {}
+  -- a pickup that needs ALL of several quests is lost as soon as one of them can't happen
+  local st, q
+  for _, s in ipairs(ns.steps) do
+    if s.preAll then for k, v in pairs(s.preAll) do if #v >= 2 then st, q = s, k break end end end
+    if st then break end
+  end
+  check(st ~= nil, "route has a pickup that needs all of several quests")
+  if st then
+    local all = st.preAll[q]
+    ns.SetIndex(st.index, true)
+    for _, p in ipairs(all) do state.done[p] = true end
+    check(not ns.PrereqLost(st, q), "all prerequisites done: the pickup stays")
+    state.done[all[1]] = nil
+    local ai = ns.acceptIndex[all[1]]
+    if ai and ai < st.index then
+      check(ns.PrereqLost(st, q), "one of all-of prerequisites missed: the pickup is dropped")
+    end
+    state.done = {}
+  end
+  -- grey quests are judged one by one: a grey chain start stays only while a quest it unlocks
+  -- is still worth doing ("The Ravaged Caravan" must not stay when "The Venture Co." is grey)
+  local starter, follow
+  for _, s in ipairs(ns.steps) do
+    if s.t == "accept" and not s.cls then
+      for _, q in ipairs(s.q) do
+        local deps = ns.dependents[q]
+        if deps and #deps == 1 and not (ns.dependents[deps[1]]) and ns.questLevel[deps[1]]
+            and ns.questLevel[q] and ns.questLevel[deps[1]] >= ns.questLevel[q] + 3 then
+          starter, follow = q, deps[1]
+        end
+      end
+    end
+    if starter then break end
+  end
+  check(starter ~= nil, "route has a chain start with a higher follow-up")
+  if starter then
+    state.log, state.done = {}, {}
+    ns.Setting("grayLevels")
+    -- the starter is grey, the follow-up is not: the starter is kept
+    local lvS, lvF = ns.questLevel[starter], ns.questLevel[follow]
+    local lvl
+    for L = lvS + 1, 60 do if ns.GreyLevel(L) >= lvS and ns.GreyLevel(L) < lvF then lvl = L break end end
+    if lvl then
+      state.level = lvl
+      ns.questGen = (ns.questGen or 0) + 1
+      check(ns.QuestWorthDoing(starter), ("grey chain start %d kept while its follow-up %d is not grey (level %d)"):format(starter, follow, lvl))
+    end
+    -- both grey: the starter goes too
+    for L = lvF + 1, 60 do if ns.GreyLevel(L) >= lvF then lvl = L break end end
+    state.level = lvl
+    ns.questGen = (ns.questGen or 0) + 1
+    check(not ns.QuestWorthDoing(starter), ("grey chain start %d dropped once its follow-up %d is grey too (level %d)"):format(starter, follow, lvl))
+    local st = ns.steps[ns.acceptIndex[starter]]
+    check(ns.QuestHidden(st, starter), "a grey quest leading to nothing worth doing is left out of its step")
+    state.level = 10
+    ns.questGen = (ns.questGen or 0) + 1
+  end
+  -- escort and event quests have a "do" step between pickup and hand-in (Protect Kaya, Escorting Erland)
+  for _, q in ipairs({ 6523, 435 }) do
+    local has = false
+    for _, s in ipairs(ns.steps) do
+      if s.t == "complete" and s.q then for _, x in ipairs(s.q) do if x == q then has = true end end end
+    end
+    check(has, "escort quest " .. q .. " has a step that tells you to do it")
+  end
+  -- training steps follow your level: even levels, never going down
+  local last = 0
+  for _, s in ipairs(ns.steps) do
+    if s.t == "train" then
+      check(s.lvl % 2 == 0 and s.lvl > last, ("training step at level %d after %d"):format(s.lvl, last))
+      last = s.lvl
+    end
+  end
+  -- travel inside a dungeon block carries the dungeon's name, except the first trip of the block
+  -- (the way in): that one stays visible even when you have outlevelled the dungeon
+  local block, trips, untagged
+  local function closeBlock()
+    if block then check(untagged == nil or untagged == 1, ("only the way into %s is untagged"):format(block)) end
+  end
+  for i, s in ipairs(ns.steps) do
+    if s.t == "note" and s.d then closeBlock(); block, trips, untagged = s.d, 0, nil
+    elseif block and s.t == "zone" then
+      trips = trips + 1
+      if s.d ~= block then
+        -- an untagged trip that leaves the block ends it; otherwise it must be the way in
+        local j = i + 1
+        while ns.steps[j] and ns.steps[j].t == "zone" do j = j + 1 end
+        if ns.steps[j] and ns.steps[j].d == block then
+          check(untagged == nil and trips == 1, ("travel step %d inside %s is tagged (%s)"):format(i, block, s.text))
+          untagged = trips
+        else closeBlock(); block = nil end
+      end
+    elseif block and not s.d and s.t ~= "zone" then closeBlock(); block = nil end
+  end
+  closeBlock()
+end
+
+------------------------------------------------------------------------------ fresh logins
+-- These load the addon again into a new namespace, so the login gate starts from scratch.
+do
+  local clock, queued = 100, {}
+  local realAfter, realGetTime = C_Timer.After, GetTime
+  GetTime = function() return clock end
+  C_Timer.After = function(_, fn) queued[#queued + 1] = fn end   -- timers wait until we run them
+  local function runTimers() local q = queued; queued = {}; for _, fn in ipairs(q) do fn() end end
+
+  local function freshAddon(charDB)
+    EarthmothersGuideDB, EarthmothersGuideCharDB = {}, charDB or {}
+    local n2 = {}
+    for _, f in ipairs(files) do
+      local chunk = loadfile(f)
+      if chunk then pcall(chunk, "EarthmothersGuide", n2) end
+    end
+    local fr = n2.eventFrame
+    return n2, function(event, arg) fr.scripts.OnEvent(fr, event, arg) end
+  end
+
+  -- 1. fresh login: updates from the loading screen do not count, and the log needs two
+  --    updates and two seconds after entering the world
+  state.log, state.done, state.ready, state.level = {}, {}, {}, 1
+  local n2, fire2 = freshAddon()
+  fire2("ADDON_LOADED", "EarthmothersGuide")
+  fire2("QUEST_LOG_UPDATE"); fire2("QUEST_LOG_UPDATE")
+  fire2("PLAYER_ENTERING_WORLD", true)
+  check(not n2.logReady, "login: quest log updates before entering the world do not count")
+  fire2("QUEST_LOG_UPDATE")
+  clock = 100.5
+  fire2("QUEST_LOG_UPDATE")
+  check(not n2.logReady, "login: two updates within two seconds are not enough")
+  clock = 102.5
+  fire2("QUEST_LOG_UPDATE")
+  check(n2.logReady, "login: the log is trusted after two updates and two seconds")
+
+  -- 2. /reload on a step chosen by hand that only counts as done once the log has loaded:
+  --    the guide stays there
+  local cIdx
+  for i, st in ipairs(n2.steps) do
+    if st.t == "complete" and st.q and #st.q == 1 and not st.cls and not st.d then cIdx = i break end
+  end
+  check(cIdx ~= nil, "found a single-quest complete step")
+  clock = 200; queued = {}
+  state.level = n2.steps[cIdx].ql or 10
+  local n3, fire3 = freshAddon({ manual = true })
+  fire3("ADDON_LOADED", "EarthmothersGuide")
+  n3.index = cIdx
+  fire3("PLAYER_ENTERING_WORLD", false)
+  check(n3.manualMove and not n3.logReady, "reload: starts on the chosen step, log not trusted yet")
+  fire3("QUEST_LOG_UPDATE")
+  runTimers(); runTimers()
+  check(n3.logReady, "reload: one update is enough")
+  check(n3.index == cIdx, ("reload: a step chosen by hand is kept (at %d, chose %d)"):format(n3.index, cIdx))
+
+  C_Timer.After, GetTime = realAfter, realGetTime
 end
 
 print(("%d passed, %d failed, %d steps"):format(passed, failures, count))

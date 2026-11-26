@@ -247,6 +247,9 @@ CHAPTERS = [
         quests([STONETALON], 17, 27, giver_zones=[BARRENS]),
         quests([ASHENVALE], 19, 28),
         dungeon('Blackfathom Deeps', 22, 30, zones=[719], turnin_zones=[ASHENVALE, ORGRIMMAR, THUNDER_BLUFF]),
+        # a short Eastern Kingdoms trip for Shadowfang Keep while it is mid-range for you (22-30, group
+        # finder): zeppelin from Orgrimmar to Undercity, quests in Undercity and Silverpine, then back
+        dungeon('Shadowfang Keep', 22, 30, zones=[209], turnin_zones=[SILVERPINE, UNDERCITY]),
         train(24),
         quests([BARRENS], 20, 27),
         bind(11116, 'Freewind Post', NEEDLES),
@@ -260,19 +263,21 @@ CHAPTERS = [
         step(t='spell', spell=TRAVEL, text='Learn Travel Form at your trainer.'),
         step(t='zone', text='Zeppelin to Undercity, then south through Silverpine to Tarren Mill.', area=HILLSBRAD),
         bind(2388, 'Tarren Mill', HILLSBRAD),
-        quests([HILLSBRAD], 24, 34, turnin_zones=[UNDERCITY]),
-        dungeon('Shadowfang Keep', 22, 30, zones=[209], turnin_zones=[SILVERPINE, UNDERCITY]),
+        quests([HILLSBRAD], 24, 34),   # Undercity hand-ins wait for the Scarlet Monastery visit
         quests([ALTERAC], 30, 36, giver_zones=[HILLSBRAD]),
         dungeon('City of Dalaran', 28, 35, zones=[16544], turnin_zones=[HILLSBRAD, ALTERAC],
                 note='City of Dalaran (new): the key chain starts with Magus Wordeen Voidglare in Tarren Mill.'),
-        quests([ARATHI], 30, 37),
-        dungeon('Excavation Site: Wetlands', 26, 33, zones=[16732], turnin_zones=[ARATHI, ORGRIMMAR, WETLANDS],
+        # before the Arathi quests, while you are still inside its 26-33 range (group finder)
+        dungeon('Excavation Site: Wetlands', 26, 33, zones=[16732], turnin_zones=[ARATHI, WETLANDS],
                 note='Excavation Site: Wetlands (new): it sits in Alliance land, so bring a group.'),
+        # Scarlet Monastery before the Arathi quests: you are mid-range for it (group finder), and
+        # its runs carry you to the level the 36-37 Arathi quests need instead of grinding
         dungeon('Scarlet Monastery', 30, 38, zones=[796], turnin_zones=[UNDERCITY, TIRISFAL, HILLSBRAD]),
+        quests([ARATHI], 30, 37, exclude=[663]),   # Land Ho! waits for its follow-ups (Ch09)
         train(32),
     ]},
     {'file': 'Ch07_StranglethornDesolace.lua', 'title': 'Stranglethorn and Desolace', 'levels': (35, 38), 'segments': [
-        step(t='zone', text="Zeppelin from Orgrimmar to Grom'gol in Stranglethorn.", area=STV),
+        step(t='zone', text="Head to Grom'gol Base Camp in Stranglethorn: zeppelin from Undercity.", area=STV),
         bind(5814, "Grom'gol Base Camp", STV),
         quests([STV], 30, 39),
         dungeon('The Drowned City', 35, 40, quest_ids=[95775, 95776, 95789, 95791], turnin_zones=[STV],
@@ -290,17 +295,18 @@ CHAPTERS = [
         step(t='zone', text='Fly to Gadgetzan and take the Steamwheedle ship to Powderfuse Port.', area=RIVERGLADES,
              tip='Riverglades has nearly 200 quests and replaces the old 36-44 zone hopping.'),
         bind(256675, "Rog'mar", RIVERGLADES),
-        quests([RIVERGLADES], 36, 46),
-        dungeon("Krol'dok Stronghold", 40, 45, quest_ids=[94968, 94972, 94975], turnin_zones=[RIVERGLADES]),
+        # you reach 40 about here: Dire Bear Form and the Kodo before the Riverglades quests
         train(40),
         step(t='level', lvl=40, text='Reach level 40 for Dire Bear Form and your Kodo.'),
         step(t='spell', spell=DIRE_BEAR, text='Learn Dire Bear Form at your trainer.'),
         step(t='note', text='Level 40: buy your Kodo from Harb Clawhoof in Bloodhoof Village and train riding.'),
+        quests([RIVERGLADES], 36, 46),
+        dungeon("Krol'dok Stronghold", 40, 45, quest_ids=[94968, 94972, 94975], turnin_zones=[RIVERGLADES]),
         train(42),
     ]},
     {'file': 'Ch09_TanarisFeralasShendralas.lua', 'title': "Eastern Kingdoms, Tanaris, Feralas and Shen'dralas", 'levels': (43, 47), 'segments': [
         step(t='note', text="Eastern Kingdoms trip: zeppelin from Orgrimmar to Undercity for Arathi and the Badlands, then Stranglethorn."),
-        quests([ARATHI], 40, 46),
+        quests([ARATHI], 40, 46, include=[663]),
         quests([BADLANDS], 40, 46),
         dungeon('Uldaman', 40, 51, zones=[1337, 1517], turnin_zones=[BADLANDS]),
         quests([SWAMP], 41, 47),
@@ -357,7 +363,8 @@ CHAPTERS = [
         train(52),
         step(t='note', text='Eastern Kingdoms trip: Sunken Temple, Searing Gorge, the Burning Steppes and Blackrock Depths.'),
         dungeon('Sunken Temple', 50, 60, zones=[1477, 1417], turnin_zones=[SWAMP]),
-        chain(dict(t='complete', q=[9053], text="Sunken Temple: defeat Atal'alarion for the Putrid Vine (A Better Ingredient)")),
+        chain(dict(t='complete', q=[9053], text="Sunken Temple: defeat Atal'alarion for the Putrid Vine (A Better Ingredient)",
+                   d='Sunken Temple', dmin=50, dmax=60, zone='Swamp of Sorrows', m=1435, x=69.9, y=53.6)),
         quests([HINTERLANDS], 50, 56),
         quests([SEARING], 50, 56),
         quests([STV], 50, 56),
