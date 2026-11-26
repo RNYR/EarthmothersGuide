@@ -178,7 +178,7 @@ check(ns.IsFiltered(dstep), "outlevelled dungeon step is skipped")
 state.level = 10
 
 -- slash commands do not error
-for _, cmd in ipairs({ "", "show", "next", "prev", "chapter 4", "dungeons off", "dungeons on", "way", "resume", "scale 1.2", "lock", "unlock", "help" }) do
+for _, cmd in ipairs({ "", "show", "next", "prev", "chapter 4", "dungeons off", "dungeons on", "way", "resume", "scale 1.2", "lock", "unlock", "support", "help" }) do
   local ok, e = pcall(SlashCmdList.EARTHMOTHERSGUIDE, cmd)
   check(ok, "/emg " .. cmd .. ": " .. tostring(e))
 end

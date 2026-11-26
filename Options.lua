@@ -152,6 +152,8 @@ local function buildPage(parent, name)
   title:SetPoint("TOPLEFT", 16, -14)
   local sub = label(p, c(C.dim, "1-60 Tauren Druid route for WoW: Forever. Tick the box beside a quest on the panel to skip it, or Done to continue a note; right-click the panel to open this page."))
   sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
+  local support = button(p, "Buy me a coffee", 120, function() if ns.ShowSupport then ns.ShowSupport() end end)
+  support:SetPoint("TOPLEFT", p, "TOPLEFT", 12 + 664 - 120, -12)
 
   -- Options ------------------------------------------------------------------------------
   local PAGE_W = 664

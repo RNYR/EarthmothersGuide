@@ -16,7 +16,7 @@ Download the release zip (or install it with the CurseForge app once it is publi
 
 On Windows the folder is usually `C:\Program Files (x86)\World of Warcraft\_forever_\Interface\AddOns\EarthmothersGuide`.
 
-Then restart the game and make sure the addon is enabled on the character screen. Commands start with `/emg`.
+Then restart the game and make sure the addon is enabled on the character screen. Commands start with `/emg`. If you enjoy it, there is a [Support](#support) section below.
 
 From a copy of the [source repository](https://github.com/RNYR/EarthmothersGuide), copy only the runtime files: `EarthmothersGuide.toc`, `Core.lua`, `Arrow.lua`, `UI.lua`, `Tracker.lua`, `Items.lua`, `Options.lua`, `Guide/` and `Media/` (not `tools/` or `tests/`).
 
@@ -123,6 +123,14 @@ Edit `tools/route.py` to change the route, then rebuild. Never edit `Guide/*.lua
 ## Language
 
 The guide text is English. Quest and NPC names come from the English game data.
+
+## Support
+
+Earthmother's Guide is free and open source, and it stays that way. If it saved you some alt-tabbing on the way to 60, you can buy me a coffee on [Ko-fi](https://ko-fi.com/v4rdr). Tips are optional and go toward keeping the route up to date as Forever changes.
+
+In the game, `/emg support` (or the **Buy me a coffee** button in the settings) shows the link ready to copy. The addon never asks on its own.
+
+Bug reports and route fixes help just as much: open an issue with the output of `/emg status` or `/emg check <questID>`.
 
 ## Credits and license
 

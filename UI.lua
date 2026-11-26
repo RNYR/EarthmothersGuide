@@ -212,10 +212,6 @@ local function layout()
       row:SetSize(width, h)
       row.text:SetPoint("TOPLEFT", row, "TOPLEFT", CHECK_W, -2)
       row.text:SetHeight(h)
-      -- centre the checkbox on the quest's first text line (not the row), whatever the font size
-      local _, size = row.text:GetFont()
-      row.check:ClearAllPoints()
-      row.check:SetPoint("CENTER", row, "TOPLEFT", CHECK_W / 2 - 3, -2 - math.floor((size or 10) / 2 + 0.5))
       row:Show()
       y = y - h - 2
       textHeight = textHeight + h + 2
@@ -390,7 +386,7 @@ local function createPanel()
     local row = CreateFrame("Frame", nil, self)
     row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
     row.check:SetSize(CHECK_W, CHECK_W)
-    row.check:SetPoint("TOPLEFT", row, "TOPLEFT", -3, 2)   -- re-anchored to the first text line in layout()
+    row.check:SetPoint("TOPLEFT", row, "TOPLEFT", -3, 2)
     row.check:SetScript("OnClick", function(cb)
       local spec = row.spec
       if not spec then return end
@@ -528,10 +524,45 @@ local HELP = {
   "/emg way - set the arrow and map pin for this step again",
   "/emg tracker on|off - show or hide Blizzard's quest tracker (hidden while the guide replaces it)",
   "/emg arrow on|off | waypoints on|off (map pin) | scale <0.6-1.6> | lock | unlock",
+  "/emg support - the link to buy the author a coffee (Ko-fi)",
 }
 
 local function say(msg) print("|cff8fbf5aEarthmother's Guide|r: " .. msg) end
 ns.say = say
+
+-- Tips are optional and the addon never asks unprompted: only /emg support and the settings button show this.
+ns.SUPPORT_URL = "https://ko-fi.com/v4rdr"
+
+-- The game cannot open links, so show the URL in a box with the text selected, ready for Ctrl+C.
+function ns.ShowSupport()
+  say("enjoying the guide? You can buy me a coffee at |cffd9b77a" .. ns.SUPPORT_URL .. "|r - thank you!")
+  if not (StaticPopupDialogs and StaticPopup_Show) then return end
+  if not StaticPopupDialogs.EARTHMOTHERSGUIDE_SUPPORT then
+    local function editBox(popup)
+      return popup.editBox or popup.EditBox or (popup.GetEditBox and popup:GetEditBox())
+    end
+    StaticPopupDialogs.EARTHMOTHERSGUIDE_SUPPORT = {
+      text = "Earthmother's Guide is free. If it helped you on the way to 60, you can buy me a coffee on Ko-fi.\n\nPress Ctrl+C to copy the link:",
+      button1 = CLOSE or "Close",
+      hasEditBox = true,
+      editBoxWidth = 260,
+      OnShow = function(self)
+        local eb = editBox(self)
+        if eb then eb:SetText(ns.SUPPORT_URL); eb:HighlightText(); eb:SetFocus() end
+      end,
+      EditBoxOnTextChanged = function(eb)   -- keep the link intact if a key slips
+        if eb:GetText() ~= ns.SUPPORT_URL then eb:SetText(ns.SUPPORT_URL); eb:HighlightText() end
+      end,
+      EditBoxOnEnterPressed = function(eb) eb:GetParent():Hide() end,
+      EditBoxOnEscapePressed = function(eb) eb:GetParent():Hide() end,
+      timeout = 0,
+      whileDead = true,
+      hideOnEscape = true,
+      preferredIndex = 3,
+    }
+  end
+  StaticPopup_Show("EARTHMOTHERSGUIDE_SUPPORT")
+end
 
 SLASH_EARTHMOTHERSGUIDE1 = "/emg"
 SlashCmdList.EARTHMOTHERSGUIDE = function(msg)
@@ -597,6 +628,8 @@ SlashCmdList.EARTHMOTHERSGUIDE = function(msg)
     if s and s >= 0.6 and s <= 1.6 then ns.SetSetting("scale", s); ns.ApplyScale() end
   elseif cmd == "lock" or cmd == "unlock" then
     ns.SetSetting("locked", cmd == "lock")
+  elseif cmd == "support" or cmd == "kofi" or cmd == "coffee" or cmd == "donate" then
+    ns.ShowSupport()
   else
     for _, l in ipairs(HELP) do say(l) end
   end

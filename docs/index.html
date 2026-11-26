@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earthmother's Guide</title>
+<meta name="description" content="A free 1-60 Tauren Druid leveling guide addon for WoW: Forever. Support it with a coffee on Ko-fi.">
+<link rel="icon" href="logo.png">
+<style>
+  :root {
+    --bg: #1d1610;
+    --panel: #2a2017;
+    --edge: #4a3826;
+    --text: #efe3cf;
+    --dim: #b9a68a;
+    --tan: #d9b77a;
+    --leaf: #8fbf5a;
+    --leaf-bright: #6fd84f;
+    --button-text: #1d1610;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(ellipse at 50% -10%, rgba(217, 183, 122, 0.16), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font: 17px/1.6 "Iowan Old Style", Georgia, "Times New Roman", "Liberation Serif", serif;
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+  main { width: 100%; max-width: 620px; }
+  header { text-align: center; }
+  header img {
+    width: 120px; height: 120px;
+    border-radius: 24px;
+    border: 1px solid var(--edge);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  }
+  h1 {
+    margin: 20px 0 4px;
+    font-size: 2.1rem;
+    font-weight: normal;
+    letter-spacing: 0.02em;
+    color: var(--leaf);
+  }
+  .tagline { margin: 0; color: var(--dim); font-style: italic; }
+  .card {
+    margin-top: 32px;
+    padding: 28px;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 14px;
+  }
+  .card h2 {
+    margin: 0 0 12px;
+    font-size: 1.25rem;
+    font-weight: normal;
+    color: var(--tan);
+  }
+  .card p { margin: 0 0 14px; }
+  .card p:last-child { margin-bottom: 0; }
+  ul { margin: 0; padding-left: 1.2em; }
+  li { margin: 4px 0; }
+  li::marker { color: var(--leaf); }
+  .coffee {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: 22px auto 8px;
+    max-width: 320px;
+    padding: 14px 22px;
+    border-radius: 999px;
+    background: var(--tan);
+    color: var(--button-text);
+    font: 600 1.05rem/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+    text-decoration: none;
+    box-shadow: 0 4px 16px rgba(217, 183, 122, 0.25);
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .coffee:hover { background: #e6c88f; transform: translateY(-1px); }
+  .coffee:focus-visible { outline: 3px solid var(--leaf-bright); outline-offset: 3px; }
+  .coffee svg { width: 22px; height: 22px; flex: none; }
+  .small { text-align: center; color: var(--dim); font-size: 0.9rem; }
+  code {
+    font: 0.9em ui-monospace, "SF Mono", Menlo, monospace;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--edge);
+    border-radius: 5px;
+    padding: 1px 6px;
+    color: var(--tan);
+  }
+  a { color: var(--leaf); }
+  footer {
+    margin-top: 36px;
+    text-align: center;
+    color: var(--dim);
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+  footer a { color: var(--dim); }
+  @media (max-width: 480px) {
+    body { padding: 32px 16px; font-size: 16px; }
+    .card { padding: 22px 18px; }
+    h1 { font-size: 1.75rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .coffee { transition: none; }
+    .coffee:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="logo.png" alt="Earthmother's Guide logo: a green arrow inside a tan ring">
+    <h1>Earthmother's Guide</h1>
+    <p class="tagline">A 1-60 Tauren Druid leveling guide for WoW: Forever</p>
+  </header>
+
+  <section class="card">
+    <h2>Free, and staying free</h2>
+    <p>Earthmother's Guide is an original route from Mulgore to 60, with a built-in arrow. It covers:</p>
+    <ul>
+      <li>every druid form quest, from Bear to Cat to Aquatic</li>
+      <li>dungeon quests, which you can switch off</li>
+      <li>Forever's new zones, such as the Riverglades</li>
+    </ul>
+    <p style="margin-top:14px">It is open source under the GPL, with no paid tier and no locked chapters.</p>
+  </section>
+
+  <section class="card">
+    <h2>Buy me a coffee</h2>
+    <p>If the guide saved you some alt-tabbing on the way to 60, a coffee helps me keep the route up to date as Forever changes. Tips are optional, and the addon never asks on its own.</p>
+    <a class="coffee" href="https://ko-fi.com/v4rdr" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 8h12v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8z"/>
+        <path d="M16 10h1.5a2.5 2.5 0 0 1 0 5H16"/>
+        <path d="M8 3c0 1 1 1 1 2M12 3c0 1 1 1 1 2"/>
+      </svg>
+      Support on Ko-fi
+    </a>
+    <p class="small">In the game, type <code>/emg support</code> to get the link.</p>
+  </section>
+
+  <section class="card">
+    <h2>Other ways to help</h2>
+    <p>Bug reports and route fixes help just as much. Open an issue on <a href="https://github.com/RNYR/EarthmothersGuide/issues">GitHub</a> and include the output of <code>/emg status</code> or <code>/emg check &lt;questID&gt;</code>.</p>
+  </section>
+
+  <footer>
+    <p><a href="https://github.com/RNYR/EarthmothersGuide">Source code and downloads</a></p>
+    <p>A fan-made add-on, not affiliated with Blizzard Entertainment.<br>World of Warcraft is a trademark of Blizzard Entertainment.</p>
+  </footer>
+</main>
+</body>
+</html>

@@ -4,6 +4,7 @@ ignore:
   - tools
   - tests
   - .github
+  - docs
   - .gitignore
   - .pkgmeta
   - Media/logo.svg
