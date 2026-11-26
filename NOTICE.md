@@ -21,7 +21,8 @@ had a formal licence, that they cannot promise every historic contributor agreed
 anything not covered should be treated as "all rights reserved"
 ([QuestieDB LICENSE.md](https://github.com/Questie/QuestieDB/blob/master/LICENSE.md),
 [Questie LICENSE.md](https://github.com/Questie/Questie/blob/master/LICENSE.md)). If you
-contributed to that data and object to its use here, open an issue and it will be removed.
+contributed to that data and object to its use here, open an issue at https://github.com/RNYR/EarthmothersGuide/issues and it will
+be removed.
 
 Earthmother's Guide modified the data: `tools/gen.py` filters it for a Tauren Druid, orders it
 into a 1-60 route, and reformats it as Lua tables. The Questie name and logo are not used for
@@ -29,7 +30,7 @@ branding.
 
 The source needed to regenerate `Guide/*.lua` (the route specification `tools/route.py`, the
 generator `tools/gen.py` and the database decoder `tools/extract_questiedb.py`) is in this
-project's public source repository.
+project's public source repository: https://github.com/RNYR/EarthmothersGuide
 
 ## World of Warcraft
 

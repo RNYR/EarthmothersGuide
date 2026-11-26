@@ -5,6 +5,7 @@
 ## Version: 1.0.0
 ## Category: Quests
 ## X-License: GPL-3.0-only
+## X-Website: https://github.com/RNYR/EarthmothersGuide
 ## IconTexture: Interface\Icons\Ability_Druid_CatForm
 ## SavedVariables: EarthmothersGuideDB
 ## SavedVariablesPerCharacter: EarthmothersGuideCharDB

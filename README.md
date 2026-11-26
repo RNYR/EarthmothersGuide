@@ -4,6 +4,8 @@ A 1-60 **Tauren Druid** leveling guide for **WoW: Forever**, with dungeon quests
 
 It is an original route. Quest names, quest IDs, NPCs and coordinates come from the community QuestieDB Forever database; the zone order, level windows and druid steps are in `tools/route.py`.
 
+Source code: https://github.com/RNYR/EarthmothersGuide
+
 ## Install
 
 Download the release zip (or install it with the CurseForge app once it is published there) and unpack it so the `EarthmothersGuide` folder ends up in your AddOns folder. On Windows that is usually `C:\\Program Files (x86)\\World of Warcraft\\_forever_\\Interface\\AddOns\\EarthmothersGuide`; on a Mac:
@@ -16,7 +18,7 @@ On Windows the folder is usually `C:\Program Files (x86)\World of Warcraft\_fore
 
 Then restart the game and make sure the addon is enabled on the character screen. Commands start with `/emg`.
 
-From a copy of the source repository, copy only the runtime files: `EarthmothersGuide.toc`, `Core.lua`, `Arrow.lua`, `UI.lua`, `Tracker.lua`, `Items.lua`, `Options.lua`, `Guide/` and `Media/` (not `tools/` or `tests/`).
+From a copy of the [source repository](https://github.com/RNYR/EarthmothersGuide), copy only the runtime files: `EarthmothersGuide.toc`, `Core.lua`, `Arrow.lua`, `UI.lua`, `Tracker.lua`, `Items.lua`, `Options.lua`, `Guide/` and `Media/` (not `tools/` or `tests/`).
 
 ## Use
 
