@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1
+
+- The direction arrow is one solid colour instead of a lit and a shaded half.
+- Each quest's skip checkbox sits level with the first line of its quest.
+- `/emg support` (also `kofi`, `coffee`, `donate`) and a "Buy me a coffee" button on the
+  settings page show a link to tip the author on Ko-fi. Optional: the addon never asks on its own.
+- New project logo.
+
 ## 1.0.0
 
 First release.
