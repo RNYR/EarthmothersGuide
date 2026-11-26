@@ -6,6 +6,9 @@ ignore:
   - .github
   - .gitignore
   - .pkgmeta
+  - Media/logo.svg
+  - Media/logo-400.png
+  - Media/logo-1024.png
 
 manual-changelog:
   filename: CHANGELOG.md

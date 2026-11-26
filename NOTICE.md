@@ -42,5 +42,6 @@ fan-made add-on and is not affiliated with or endorsed by Blizzard Entertainment
 ## Artwork
 
 `Media/Arrow.tga` is original artwork drawn by `tools/make_arrow.py` (GPL v3, part of this
-project). Icons referenced at runtime (`Interface\Icons\...`) are the game's own and are not
+project). The project logo (`Media/logo.svg`, rendered to `Media/logo-400.png` and
+`Media/logo-1024.png`) is original artwork drawn by `tools/make_logo.py`, (C) 2026 Vard Ruun, GPL-3.0-only. Icons referenced at runtime (`Interface\Icons\...`) are the game's own and are not
 redistributed.
