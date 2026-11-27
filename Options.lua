@@ -194,7 +194,15 @@ local function buildPage(parent, name)
     end,
     function(v) return v .. " px" end)
   height:SetPoint("TOPLEFT", gray, "BOTTOMLEFT", 0, -2)
-  p.steppers = { scale, gray, height }
+  local widthStep = stepper(p, "Panel width",
+    function() return ns.Setting("panelWidth") or 350 end,
+    function(d)
+      ns.SetSetting("panelWidth", math.max(260, math.min(520, (ns.Setting("panelWidth") or 350) + d * 10)))
+      if ns.PreviewMaxHeight then ns.PreviewMaxHeight() end   -- outline of the new size
+    end,
+    function(v) return v .. " px" end)
+  widthStep:SetPoint("TOPLEFT", height, "BOTTOMLEFT", 0, -2)
+  p.steppers = { scale, gray, height, widthStep }
 
   local find = button(p, "Find my place", 120, function() ns.InitPosition(true); p:Refresh(true) end)
   find:SetPoint("TOPLEFT", p, "TOPLEFT", 20, -180)

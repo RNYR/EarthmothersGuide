@@ -2,7 +2,7 @@
 ## Title: |cff8fbf5aEarthmother's Guide|r
 ## Notes: Earthmother's Guide - the 1-60 Tauren Druid leveling guide for WoW: Forever, with dungeon quests, druid class quests and a built-in arrow.
 ## Author: Vard Ruun
-## Version: 1.0.0
+## Version: 1.0.1
 ## Category: Quests
 ## X-License: GPL-3.0-only
 ## X-Website: https://github.com/RNYR/EarthmothersGuide

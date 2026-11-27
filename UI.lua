@@ -24,12 +24,17 @@ ns.TYPE_LABEL = TYPE_LABEL
 local function c(hex, text) return "|c" .. hex .. text .. "|r" end
 
 local panel
-local PANEL_WIDTH = 330
-local ARROW_COL = 50        -- width of the arrow column on the right
+local MIN_WIDTH, MAX_WIDTH = 260, 520   -- "Panel width" setting; 260 still fits the header
+local function panelWidth()
+  return math.max(MIN_WIDTH, math.min(MAX_WIDTH, ns.Setting("panelWidth") or 350))
+end
+local ARROW_W = 44          -- the arrow's corner (top right): arrowhead with the distance under it
+local ICON = 30             -- the guide's icon (top left), as tall as the two header lines
+local TEXT_X = 8 + ICON + 6 -- title and chapter line start here, lined up
 local CHECK_W = 18          -- quest checkbox size
 local ITEM_W = 24           -- quest item button beside a quest row (like Blizzard's quest tracker)
 local PAD = 10
-local HEADER = 44           -- title and chapter line; the rest of the panel scrolls
+local HEADER = 54           -- icon, title and chapter line, arrow, and a gap; the rest scrolls
 local MIN_HEIGHT = 120      -- the smallest "Panel max height" still shows the arrow and a line or two
 
 ----------------------------------------------------------------------------------------------
@@ -86,29 +91,34 @@ local function questRows(step)
   end
   if not step.q then return rows end
   local targeted = panel and panel.arrowQuest
+  local side = ns.InSideTrip()
   for _, id in ipairs(step.q) do
-    local name = questName(step, id)
-    if ns.IsSkipped(id) then
-      -- stays visible (dimmed, ticked) while its step is on screen, so a misclick is easy to undo
-      rows[#rows + 1] = { q = id, skipped = true, text = c(COLORS.dim, name .. " - skipped") }
-    elseif not ns.QuestHidden(step, id) then
-      local lines = {}
-      if step.t == "complete" then
-        if ns.IsQuestTurnedIn(id) or ns.IsQuestReady(id) then
-          lines[1] = READY .. " " .. c(COLORS.dim, name .. (ns.IsQuestReady(id) and " - ready" or ""))
-        elseif ns.IsQuestFailed and ns.IsQuestFailed(id) then
-          lines[1] = name .. c(COLORS.dungeon, " - failed: abandon it and pick it up again")
-        elseif ns.IsQuestInLog(id) then
-          activeQuestLines(lines, step, id, targeted == id and #step.q > 1)
-          lines[1] = lines[1]:gsub("^%- ", "")
+    if side and not (ns.side and ns.side[id]) then
+      -- on a side trip: only the quest you picked up out of order (and its follow-ups)
+    else
+      local name = questName(step, id)
+      if ns.IsSkipped(id) then
+        -- stays visible (dimmed, ticked) while its step is on screen, so a misclick is easy to undo
+        rows[#rows + 1] = { q = id, skipped = true, text = c(COLORS.dim, name .. " - skipped") }
+      elseif not ns.QuestHidden(step, id) then
+        local lines = {}
+        if step.t == "complete" then
+          if ns.IsQuestTurnedIn(id) or ns.IsQuestReady(id) then
+            lines[1] = READY .. " " .. c(COLORS.dim, name .. (ns.IsQuestReady(id) and " - ready" or ""))
+          elseif ns.IsQuestFailed and ns.IsQuestFailed(id) then
+            lines[1] = name .. c(COLORS.dungeon, " - failed: abandon it and pick it up again")
+          elseif ns.IsQuestInLog(id) then
+            activeQuestLines(lines, step, id, targeted == id and #step.q > 1)
+            lines[1] = lines[1]:gsub("^%- ", "")
+          end
+        else
+          local mark = ""
+          if ns.IsQuestTurnedIn(id) or (step.t == "accept" and ns.IsQuestInLog(id)) then mark = " " .. READY end
+          local prof = step.prof and step.prof[id]
+          lines[1] = name .. (prof and c(COLORS.dim, " (" .. prof .. ")") or "") .. mark
         end
-      else
-        local mark = ""
-        if ns.IsQuestTurnedIn(id) or (step.t == "accept" and ns.IsQuestInLog(id)) then mark = " " .. READY end
-        local prof = step.prof and step.prof[id]
-        lines[1] = name .. (prof and c(COLORS.dim, " (" .. prof .. ")") or "") .. mark
+        if #lines > 0 then rows[#rows + 1] = { q = id, text = table.concat(lines, "\n") } end
       end
-      if #lines > 0 then rows[#rows + 1] = { q = id, text = table.concat(lines, "\n") } end
     end
   end
   return rows
@@ -126,20 +136,13 @@ local function readyLines()
   return table.concat(lines, "\n")
 end
 
--- Extra section under the step: quests ready to hand in elsewhere; then on pickups, what the
--- following batch holds, otherwise the other unfinished quests you carry from this chapter.
+-- Extra section under the step: finished quests of this batch to hand in elsewhere, then (not on
+-- pickups) the other unfinished quests you carry from this chapter.
 local function extraLines(step)
   local parts = {}
   local ready = readyLines()
   if ready then parts[#parts + 1] = ready end
-  if step.t == "accept" then
-    local list = ns.ComingUp()
-    if #list > 0 then
-      local names = {}
-      for _, e in ipairs(list) do names[#names + 1] = e.name end
-      parts[#parts + 1] = c(COLORS.title, "Coming up: ") .. c(COLORS.dim, table.concat(names, ", "))
-    end
-  elseif ns.Setting("showCarried") then
+  if step.t ~= "accept" and ns.Setting("showCarried") and not ns.InSideTrip() then
     local list = ns.Carrying()
     if #list > 0 then
       local lines = { c(COLORS.title, "Also carrying:") }
@@ -160,6 +163,22 @@ local function extraLines(step)
   return table.concat(parts, "\n")
 end
 
+-- The step's text. A batch says how many of its quests you actually have to do: quests you
+-- never picked up (or skipped) are not counted, so "Do these 6 quests" becomes "Do these 2".
+function ns.StepText(step, rows)
+  local text = step.text or ""
+  if step.t ~= "complete" or not step.q or #step.q < 2 or not text:match("^Do these %d+ quests") then
+    return text
+  end
+  local n = 0
+  for _, spec in ipairs(rows or {}) do
+    if spec.q and not spec.skipped then n = n + 1 end
+  end
+  if n == 0 or n == #step.q then return text end
+  if n == 1 then return "Do this quest - the arrow leads to it" end
+  return (text:gsub("^Do these %d+ quests", "Do these " .. n .. " quests"))
+end
+
 ----------------------------------------------------------------------------------------------
 -- Layout
 ----------------------------------------------------------------------------------------------
@@ -176,9 +195,13 @@ end
 local function layout()
   local hasArrow = panel.arrowShown
   local left = PAD
-  local width = PANEL_WIDTH - 2 * PAD - (hasArrow and ARROW_COL or 0)
-  -- The chapter line shares the row with the arrow, so it stops before it.
-  panel.chapter:SetWidth(width)
+  local PANEL_WIDTH = panelWidth()
+  panel:SetWidth(PANEL_WIDTH)
+  local width = PANEL_WIDTH - 2 * PAD     -- the text below the header uses the full width
+  -- the chapter line sits between the icon and the arrow's corner
+  panel.chapter:SetWidth(PANEL_WIDTH - TEXT_X - PAD - (hasArrow and ARROW_W or 0))
+  local header = HEADER
+  panel.header = header
   local y = 0                -- inside the scrolling content, under the header
   local textHeight = 0
   local function place(fs, spacing)
@@ -224,15 +247,13 @@ local function layout()
   place(panel.also, 0)
   place(panel.tip, 0)
   place(panel.hint, 0)
-  -- arrow (30) + distance line under it, starting at -25
-  local arrowBottom = hasArrow and (25 + 30 + 16) or 0
-  local natural = math.max(70, HEADER + textHeight + 6, arrowBottom + 8)
-  local maxH = math.max(MIN_HEIGHT, arrowBottom + 8, ns.Setting("maxHeight") or 450)
+  local natural = math.max(70, header + textHeight + 6)
+  local maxH = math.max(MIN_HEIGHT, ns.Setting("maxHeight") or 450)
   local height = math.min(natural, maxH)
   panel:SetHeight(height)
   panel.content:SetSize(PANEL_WIDTH, math.max(1, textHeight))
   -- longer than the maximum: scroll with the mouse wheel; a thin bar shows where you are
-  local view = height - HEADER - 6
+  local view = height - header - 6
   panel.scrollMax = math.max(0, textHeight - view)
   panel.scrollView, panel.scrollTotal = view, textHeight
   ns.ScrollPanel(0)
@@ -250,7 +271,7 @@ function ns.ScrollPanel(delta)
     local thumb = math.max(12, view * view / total)
     panel.thumb:SetHeight(thumb)
     panel.thumb:ClearAllPoints()
-    panel.thumb:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -3, -HEADER - (view - thumb) * cur / maxS)
+    panel.thumb:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -3, -(panel.header or HEADER) - (view - thumb) * cur / maxS)
     panel.thumb:Show()
   else
     panel.thumb:Hide()
@@ -258,13 +279,14 @@ function ns.ScrollPanel(delta)
   if ns.UpdateItemButtons then ns.UpdateItemButtons() end
 end
 
--- Show the "Panel max height" as an outline for a few seconds (while you change the setting).
+-- Show the panel's size ("Panel width" x "Panel max height") as an outline for a few seconds,
+-- while you change either setting.
 local previewToken = 0
 function ns.PreviewMaxHeight()
   if not panel then return end
   local h = math.max(MIN_HEIGHT, ns.Setting("maxHeight") or 450)
-  panel.preview:SetSize(PANEL_WIDTH, h)
-  panel.preview.label:SetText(c(COLORS.title, ("max height %d"):format(h)))
+  panel.preview:SetSize(panelWidth(), h)
+  panel.preview.label:SetText(c(COLORS.title, ("%d x %d"):format(panelWidth(), h)))
   panel.preview:Show()
   previewToken = previewToken + 1
   local mine = previewToken
@@ -293,7 +315,8 @@ local function render(step)
   local ch = step.chapter
   panel.chapter:SetText(c(COLORS.chapter, ("Ch. %d: %s (%d-%d)"):format(ch.num, ch.title, ch.levels[1], ch.levels[2])))
 
-  local first = c(COLORS.title, (TYPE_LABEL[step.t] or "") .. ":") .. " " .. (step.text or "")
+  local rows = questRows(step)
+  local first = c(COLORS.title, (TYPE_LABEL[step.t] or "") .. ":") .. " " .. ns.StepText(step, rows)
   if step.d then
     first = c(COLORS.dungeon, ("[%s %d-%d] "):format(step.d, step.dmin or 0, step.dmax or 60)) .. first
   end
@@ -306,7 +329,6 @@ local function render(step)
     lines[#lines + 1] = c(COLORS.dim, ("%s (%.1f, %.1f)"):format(step.zone or "", step.x, step.y))
   end
   panel.body:SetText(table.concat(lines, "\n"))
-  local rows = questRows(step)
   for i, spec in ipairs(rows) do
     local row = panel.rows[i] or panel:NewRow()
     row.used, row.spec = true, spec
@@ -326,7 +348,9 @@ local function render(step)
   local tip = ns.StepTip(step)
   panel.tip:SetText(tip and c(COLORS.tip, tip) or "")
   local hint = nil
-  if step.t == "bind" then hint = "Continues when your hearthstone is set here (or tick Done)."
+  if ns.InSideTrip() then
+    hint = ("Out of route order: finish this, then the guide takes you back to step %d."):format(ns.returnIndex)
+  elseif step.t == "bind" then hint = "Continues when your hearthstone is set here (or tick Done)."
   elseif ns.IsManual(step) then hint = "Tick Done to continue." end
   -- falling behind: say so instead of sending you into quests that are too hard
   local level = ns.PlayerLevel()
@@ -352,7 +376,7 @@ end
 ----------------------------------------------------------------------------------------------
 local function createPanel()
   panel = CreateFrame("Frame", "EarthmothersGuideFrame", UIParent, "BackdropTemplate")
-  panel:SetSize(PANEL_WIDTH, 100)
+  panel:SetSize(panelWidth(), 100)
   panel:SetClampedToScreen(true)
   panel:SetMovable(true)
   panel:EnableMouse(true)
@@ -396,30 +420,25 @@ local function createPanel()
     panel:SetBackdropBorderColor(unpack(COLORS.border))
   end
 
+  -- header: icon on the left spanning the title and chapter lines, both lined up beside it;
+  -- the arrow in the top-right corner; the step text starts under all of it at full width
   local icon = panel:CreateTexture(nil, "ARTWORK")
-  icon:SetSize(16, 16)
-  icon:SetPoint("TOPLEFT", 8, -7)
+  icon:SetSize(ICON, ICON)
+  icon:SetPoint("TOPLEFT", 8, -8)
   icon:SetTexture("Interface\\Icons\\Ability_Druid_CatForm")
 
   panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  panel.title:SetPoint("LEFT", icon, "RIGHT", 5, 0)
+  panel.title:SetPoint("TOPLEFT", panel, "TOPLEFT", TEXT_X, -9)
   panel.title:SetText(c(COLORS.title, "Earthmother's Guide"))
 
-  -- Gear: opens the settings / route browser.
-  local gear = CreateFrame("Button", nil, panel)
-  gear:SetSize(14, 14)
-  gear:SetPoint("TOPRIGHT", -8, -8)
-  gear:SetNormalTexture("Interface\\Icons\\INV_Misc_Gear_01")
-  gear:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-  gear:SetScript("OnClick", function() if ns.OpenOptions then ns.OpenOptions() end end)
-  panel.gear = gear
-
+  -- step counter on the title line, right-aligned (left of the arrow while it is shown);
+  -- the settings open with a right-click on the panel or /emg options
   panel.counter = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  panel.counter:SetPoint("RIGHT", gear, "LEFT", -6, 0)
+  panel.counter:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -PAD, -10)
 
   panel.chapter = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  panel.chapter:SetPoint("TOPLEFT", PAD, -27)
-  panel.chapter:SetWidth(PANEL_WIDTH - 2 * PAD)
+  panel.chapter:SetPoint("TOPLEFT", panel, "TOPLEFT", TEXT_X, -27)
+  panel.chapter:SetWidth(panelWidth() - TEXT_X - PAD)
   panel.chapter:SetJustifyH("LEFT")
   panel.chapter:SetWordWrap(false)
 
@@ -428,7 +447,7 @@ local function createPanel()
   panel.scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -HEADER)
   panel.scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", 0, 6)
   panel.content = CreateFrame("Frame", nil, panel.scroll)
-  panel.content:SetSize(PANEL_WIDTH, 1)
+  panel.content:SetSize(panelWidth(), 1)
   panel.scroll:SetScrollChild(panel.content)
   panel:EnableMouseWheel(true)
   panel:SetScript("OnMouseWheel", function(_, delta) ns.ScrollPanel(-delta * 36) end)
@@ -494,32 +513,42 @@ local function createPanel()
   panel.tip = textBlock()
   panel.hint = textBlock()
 
-  -- Arrow column on the right: arrowhead + distance, inside the panel.
-  panel.arrow = panel:CreateTexture(nil, "ARTWORK")
-  -- Sits right under the header line (title, counter, gear), top-right.
-  -- Centred in the strip between the end of the text column and the panel's right edge, so
-  -- the space on its left and right is equal.
-  local ARROW_SIZE = 30
-  panel.arrow:SetSize(ARROW_SIZE, ARROW_SIZE)
-  panel.arrow:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -((PAD + ARROW_COL) / 2 - ARROW_SIZE / 2), -25)
-  panel.arrow:SetTexture(ns.ARROW_TEXTURE)
-  panel.dist = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  panel.dist:SetPoint("TOP", panel.arrow, "BOTTOM", 0, -2)
-  panel.dist:SetWidth(ARROW_COL)
+  -- The arrow has the top-right corner to itself: arrowhead with the distance under it, within
+  -- the height of the title and chapter lines, so the step text below is never cut short.
+  -- Its right edge is the text column's right edge: the distance is right-aligned to it and the
+  -- arrowhead sits centred above the distance, so both end where the step text ends.
+  panel.arrowBox = CreateFrame("Frame", nil, panel)
+  panel.arrowBox:SetSize(ARROW_W, 42)
+  panel.arrowBox:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -PAD, -5)
+  panel.arrowBox:Hide()
+  local ARROW_SIZE = 24
+  panel.dist = panel.arrowBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  panel.dist:SetPoint("BOTTOMRIGHT", panel.arrowBox, "BOTTOMRIGHT", 0, 2)
+  panel.dist:SetJustifyH("RIGHT")
   panel.dist:SetWordWrap(false)
+  panel.arrow = panel.arrowBox:CreateTexture(nil, "ARTWORK")
+  panel.arrow:SetSize(ARROW_SIZE, ARROW_SIZE)
+  panel.arrow:SetPoint("BOTTOM", panel.dist, "TOP", 0, 1)
+  panel.arrow:SetTexture(ns.ARROW_TEXTURE)
+  -- the counter moves left of the arrow while it is shown
+  function panel:PlaceHeaderRight()
+    self.counter:ClearAllPoints()
+    self.counter:SetPoint("TOPRIGHT", self, "TOPRIGHT", self.arrowShown and -(PAD + ARROW_W) or -PAD, -10)
+  end
 
   function panel:UpdateArrow()
     local reading = ns.Setting("arrow") and ns.ArrowReading and ns.ArrowReading()
     local show = reading ~= nil
     if show ~= self.arrowShown then
       self.arrowShown = show
+      self:PlaceHeaderRight()
       layout()
     end
     if not show then
-      self.arrow:Hide(); self.dist:Hide()
+      self.arrowBox:Hide()
       return
     end
-    self.arrow:Show(); self.dist:Show()
+    self.arrowBox:Show()
     if reading.q ~= self.arrowQuest then
       self.arrowQuest = reading.q
       local st = ns.Current()
@@ -599,7 +628,7 @@ local HELP = {
   "/emg gray grey|0-10 - skip quests when they turn grey (default), never (0), or this many levels below you",
   "/emg way - set the arrow and map pin for this step again",
   "/emg tracker on|off - show or hide Blizzard's quest tracker (hidden while the guide replaces it)",
-  "/emg arrow on|off | waypoints on|off (map pin) | scale <0.6-1.6> | height <150-900> | lock | unlock",
+  "/emg arrow on|off | waypoints on|off (map pin) | scale <0.6-1.6> | width <260-520> | height <150-900> | lock | unlock",
 }
 
 local function say(msg) print("|cff8fbf5aEarthmother's Guide|r: " .. msg) end
@@ -667,6 +696,11 @@ SlashCmdList.EARTHMOTHERSGUIDE = function(msg)
   elseif cmd == "scale" then
     local s = tonumber(arg)
     if s and s >= 0.6 and s <= 1.6 then ns.SetSetting("scale", s); ns.ApplyScale() end
+  elseif cmd == "width" then
+    local w = tonumber(arg)
+    if w and w >= 260 and w <= 520 then ns.SetSetting("panelWidth", math.floor(w)) end
+    if ns.PreviewMaxHeight then ns.PreviewMaxHeight() end
+    say(("panel width %d px"):format(ns.Setting("panelWidth")))
   elseif cmd == "height" then
     local h = tonumber(arg)
     if h and h >= 150 and h <= 900 then ns.SetSetting("maxHeight", math.floor(h)) end

@@ -339,7 +339,7 @@ local acc
 for i = batchStep.index - 1, 1, -1 do if ns.steps[i].t == "accept" then acc = ns.steps[i] break end end
 for _, q in ipairs(batchStep.q) do state.log[q] = nil end
 ns.SetIndex(acc.index, true)
-check(#ns.ComingUp() >= 1, "pickup step previews the coming batch (" .. #ns.ComingUp() .. ")")
+check(ns.ComingUp == nil, "the \"Coming up\" section is gone")
 
 -- compact mode and item button render without errors
 GetQuestLogSpecialItemInfo = function() return "|Hitem:5880|h[Lunardust]|h", 134400 end
@@ -386,6 +386,20 @@ do
   ns.ScrollPanel(-10000)
   check((pf.scrollAt or 0) == 0, "scrolling stops at the top")
   check(pcall(ns.PreviewMaxHeight), "the max height preview shows without errors")
+  -- panel width: set, kept within 260-520, and the panel lays out at that width
+  local widths = {}
+  pf.SetWidth = function(_, w) widths[#widths + 1] = w end
+  SlashCmdList.EARTHMOTHERSGUIDE("width 420")
+  check(ns.Setting("panelWidth") == 420, "/emg width sets the panel width")
+  ns.Fire()
+  check(widths[#widths] == 420, "the panel is laid out at the chosen width")
+  SlashCmdList.EARTHMOTHERSGUIDE("width 2000")
+  check(ns.Setting("panelWidth") == 420, "a width outside 260-520 is refused")
+  ns.SetSetting("panelWidth", 100)
+  ns.Fire()
+  check(widths[#widths] == 260, "the panel never gets narrower than 260")
+  ns.SetSetting("panelWidth", 350)
+  ns.Fire()
   ns.SetSetting("maxHeight", 450)
   ns.Fire()
 end
@@ -397,16 +411,35 @@ for _, st in ipairs(ns.steps) do
   end
 end
 
--- ready to hand in: a finished quest in your log shows with who takes it and where
-local farTurnin
-for _, st in ipairs(ns.chapters[3].steps) do if st.t == "turnin" and st.npc and st.zone then farTurnin = st break end end
-local rq = farTurnin.q[1]
-state.log, state.ready, state.done = { [rq] = true }, { [rq] = true }, {}
-ns.SetIndex(ns.chapters[2].steps[5].index, true)
-local ready = ns.ReadyToHandIn()
-check(#ready == 1 and ready[1].npc == farTurnin.npc and ready[1].zone == farTurnin.zone,
-  "ready list names who takes the quest and where (" .. tostring(ready[1] and ready[1].npc) .. ")")
-check(pcall(ns.Fire), "panel renders the ready list")
+-- ready to hand in: only finished quests of the batch you are on, with who takes them and where
+do
+  local bstep
+  for _, st in ipairs(ns.steps) do
+    if st.t == "complete" and st.q and #st.q >= 3 and not st.d then
+      local ok = true
+      for _, q in ipairs(st.q) do if not ns.turninIndex[q] or ns.turninIndex[q] < st.index then ok = false end end
+      if ok then bstep = st break end
+    end
+  end
+  check(bstep ~= nil, "found a batch with hand-ins after it")
+  local q1, q2 = bstep.q[1], bstep.q[2]
+  local t1 = ns.steps[ns.turninIndex[q1]]
+  -- someone else's finished quest, from another chapter, is in your log too
+  local other
+  for q, ti in pairs(ns.turninIndex) do if ns.steps[ti].chapter ~= bstep.chapter then other = q break end end
+  state.log, state.ready, state.done = { [q1] = true, [q2] = true, [other] = true }, { [q1] = true, [q2] = true, [other] = true }, {}
+  ns.SetIndex(t1.index, true)
+  local ready = ns.ReadyToHandIn()
+  local has2, hasOther = false, false
+  for _, e in ipairs(ready) do
+    if e.id == q2 then has2 = e end
+    if e.id == other then hasOther = true end
+  end
+  check(has2 and has2.npc == ns.steps[ns.turninIndex[q2]].npc, "a finished quest of this batch is listed with who takes it")
+  check(not hasOther, "finished quests from outside the batch are not listed")
+  check(pcall(ns.Fire), "panel renders the ready list")
+  state.log, state.ready = {}, {}
+end
 
 -- profession quests
 local profStep, profQ
@@ -1070,6 +1103,84 @@ do
     elseif block and not s.d and s.t ~= "zone" then closeBlock(); block = nil end
   end
   closeBlock()
+end
+
+------------------------------------------------------------------------------ batch text
+-- "Do these 6 quests" counts only the quests you actually have to do
+do
+  local bs
+  for _, st in ipairs(ns.steps) do
+    if st.t == "complete" and st.q and #st.q >= 4 and (st.text or ""):match("^Do these") then bs = st break end
+  end
+  local function rowsFor(list) local r = {} for _, q in ipairs(list) do r[#r + 1] = { q = q } end return r end
+  check(ns.StepText(bs, rowsFor(bs.q)) == bs.text, "all quests of the batch: the text is unchanged")
+  check(ns.StepText(bs, rowsFor({ bs.q[1], bs.q[2] })):match("^Do these 2 quests"), "two of them in your log: \"Do these 2 quests\"")
+  check(ns.StepText(bs, rowsFor({ bs.q[1] })):match("^Do this quest"), "one of them: \"Do this quest\"")
+  local r = rowsFor({ bs.q[1], bs.q[2], bs.q[3] }); r[3].skipped = true
+  check(ns.StepText(bs, r):match("^Do these 2 quests"), "a skipped quest is not counted")
+end
+
+------------------------------------------------------------------------------ side trips
+-- Chen's Empty Keg (819) looted after the route passed its steps: picking it up sends the
+-- guide back to it, then (with its follow-ups) back to where you were.
+do
+  ns.logReady = true; ns.startIndex = nil; ns.manualMove = false
+  state.log, state.ready, state.done, state.level = {}, {}, {}, 16
+  ns.EndSideTrip()
+  local Q = 819
+  local ti = ns.turninIndex[Q]
+  check(ti ~= nil and ns.acceptIndex[Q] ~= nil, "Chen's Empty Keg is in the route")
+  -- stand a few steps past its hand-in, in the same chapter
+  local here = ti
+  for i = ti + 1, #ns.steps do
+    if ns.steps[i].chapter ~= ns.steps[ti].chapter then break end
+    here = i
+    if i >= ti + 8 then break end
+  end
+  -- everything before here is done
+  for i = 1, here - 1 do
+    local st = ns.steps[i]
+    for _, q in ipairs(st.q or {}) do if q ~= Q then state.done[q] = true end end
+  end
+  ns.SetIndex(here, false)
+  check(ns.index == here, "standing past the keg's hand-in")
+  state.log[Q] = true
+  local target = ns.SideTripTarget(Q)
+  check(target ~= nil and target < here, "the keg's next step is behind you")
+  fire("QUEST_ACCEPTED", Q)
+  check(ns.index == target, ("picking up the keg goes back to it (at %d, want %d)"):format(ns.index, target))
+  check(ns.InSideTrip(), "a side trip is on")
+  -- finish and hand it in
+  state.ready[Q] = true
+  fire("QUEST_LOG_UPDATE")
+  state.log[Q], state.ready[Q], state.done[Q] = nil, nil, true
+  fire("QUEST_TURNED_IN", Q)
+  -- either a follow-up of the keg is next, or the guide is back where you were
+  local cur = ns.Current()
+  local onFollowUp = false
+  for _, d in ipairs(ns.dependents[Q] or {}) do if cur.q then for _, x in ipairs(cur.q) do if x == d then onFollowUp = true end end end end
+  check(onFollowUp or ns.index >= here, ("after the hand-in: a follow-up or back to your place (at %d, was %d)"):format(ns.index, here))
+  -- finish any follow-ups the same way; the guide ends up back at your place
+  for _ = 1, 10 do
+    cur = ns.Current()
+    if ns.index >= here or not cur.q then break end
+    for _, q in ipairs(cur.q) do
+      if cur.t == "accept" then state.log[q] = true; fire("QUEST_ACCEPTED", q)
+      elseif cur.t == "complete" then state.ready[q] = true; fire("QUEST_LOG_UPDATE")
+      else state.log[q], state.ready[q], state.done[q] = nil, nil, true; fire("QUEST_TURNED_IN", q) end
+    end
+  end
+  check(ns.index >= here and not ns.InSideTrip(), ("the side trip ends back at your place (at %d, was %d)"):format(ns.index, here))
+  -- a quest whose hand-in is still ahead does not start a side trip
+  local ahead
+  for q, t in pairs(ns.turninIndex) do if t > ns.index + 5 and ns.acceptIndex[q] and ns.acceptIndex[q] < ns.index then ahead = q break end end
+  if ahead then
+    state.log[ahead] = true
+    check(ns.SideTripTarget(ahead) == nil, "a quest the route hands in later is no reason to go back")
+    state.log[ahead] = nil
+  end
+  state.log, state.ready, state.done = {}, {}, {}
+  ns.EndSideTrip()
 end
 
 ------------------------------------------------------------------------------ fresh logins

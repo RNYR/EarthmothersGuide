@@ -11,7 +11,7 @@ ns.chapters = {}
 ns.steps = {}        -- flattened list of all steps, in route order
 ns.listeners = {}    -- callbacks fired when the current step or its state changes
 
-local DEFAULTS = { scale = 1, maxHeight = 450, locked = false, shown = true,
+local DEFAULTS = { scale = 1, panelWidth = 350, maxHeight = 450, locked = false, shown = true,
                    waypoints = true, arrow = true, grayLevels = -1,
                    compact = false, showCarried = true, itemButton = true, professions = true,
                    hideTracker = true }
@@ -591,11 +591,35 @@ function ns.Carrying(...)
 end
 
 
--- Finished quests in your log waiting to be handed in (other than the current step's), with
--- who takes them and where, from the guide's turn-in steps. Nothing ready is ever invisible.
+-- The quests of the batch you are working on: the "do these quests" step your pickups lead to,
+-- or the one your hand-ins come from (within the chapter).
+function ns.BatchQuests()
+  local cur = ns.Current()
+  if not cur then return {} end
+  local c
+  if cur.t == "complete" then c = cur end
+  local i = ns.index or 1
+  if not c then
+    local j = i + 1
+    while ns.steps[j] and ns.steps[j].chapter == cur.chapter and (ns.steps[j].t == "accept" or ns.steps[j].t == "zone") do j = j + 1 end
+    if cur.t ~= "turnin" and ns.steps[j] and ns.steps[j].chapter == cur.chapter and ns.steps[j].t == "complete" then c = ns.steps[j] end
+  end
+  if not c then
+    local j = i - 1
+    while ns.steps[j] and ns.steps[j].chapter == cur.chapter and (ns.steps[j].t == "turnin" or ns.steps[j].t == "zone") do j = j - 1 end
+    if ns.steps[j] and ns.steps[j].chapter == cur.chapter and ns.steps[j].t == "complete" then c = ns.steps[j] end
+  end
+  local set = {}
+  for _, q in ipairs(c and c.q or {}) do set[q] = true end
+  return set
+end
+
+-- Finished quests of the current batch waiting to be handed in (other than the current step's),
+-- with who takes them and where, from the guide's turn-in steps.
 local function rawReadyToHandIn()
   local out, seen = {}, {}
   local cur = ns.Current()
+  local batch = ns.BatchQuests()
   for _, q in ipairs(cur and cur.q or {}) do seen[q] = true end
   local ids = {}
   local QLx = C_QuestLog or {}
@@ -609,7 +633,7 @@ local function rawReadyToHandIn()
     for q in pairs(ns.turninIndex or {}) do ids[#ids + 1] = q end
   end
   for _, q in ipairs(ids) do
-    if not seen[q] and ns.IsQuestReady(q) then
+    if not seen[q] and batch[q] and ns.IsQuestReady(q) then
       seen[q] = true
       local st = ns.turninIndex and ns.turninIndex[q] and ns.steps[ns.turninIndex[q]]
       local title = st and st.qn and st.qn[q]
@@ -658,27 +682,107 @@ function ns.LookOutFor(...)
   return r
 end
 
--- On a pickup step: the quests of the batch that follows, so you can see what you are about
--- to do. Only quests not in your log yet.
-function ns.ComingUp()
-  local out = {}
-  local cur = ns.Current()
-  if not cur or cur.t ~= "accept" then return out end
-  local i = (ns.index or 1) + 1
-  while ns.steps[i] and ns.steps[i].chapter == cur.chapter and ns.steps[i].t == "accept" do i = i + 1 end
-  local st = ns.steps[i]
-  if st and st.chapter == cur.chapter and st.t == "complete" and st.q then
-    for _, q in ipairs(st.q) do
-      if not ns.IsQuestInLog(q) and not ns.IsQuestTurnedIn(q) and not ns.QuestHidden(st, q) then
-        out[#out + 1] = { id = q, name = (st.qn and st.qn[q]) or ("Quest " .. q) }
-      end
-    end
-  end
-  return out
-end
-
 function ns.Current()
   return ns.steps[ns.index or 1]
+end
+
+----------------------------------------------------------------------------------------------
+-- Quests picked up out of route order (a side trip)
+----------------------------------------------------------------------------------------------
+-- You accept a quest whose steps the route has already passed (an item-started quest looted
+-- late, a quest taken early or out of order), or you hand in a quest whose follow-up pickup is
+-- behind you. The guide then goes back to that quest's next step, shows only that quest and its
+-- follow-ups, and returns to where you were once they are done. Only within the chapter you are
+-- in; quests from older chapters stay under "Also carrying".
+
+local function stepHas(st, q)
+  for _, x in ipairs(st.q or {}) do if x == q then return true end end
+  return false
+end
+
+-- The earliest unfinished step of quest q that is behind you (in this chapter), or nil.
+function ns.SideTripTarget(q)
+  local cur = ns.index or 1
+  local here = ns.steps[cur]
+  if not here or ns.IsSkipped(q) or ns.IsQuestTurnedIn(q) then return nil end
+  local function inChapter(i) return i and ns.steps[i] and ns.steps[i].chapter == here.chapter end
+  local ai, ti = ns.acceptIndex and ns.acceptIndex[q], ns.turninIndex and ns.turninIndex[q]
+  if ns.IsQuestInLog(q) then
+    -- the route hands it in later anyway: nothing to go back for
+    if not ti or ti >= cur or not inChapter(ti) then return nil end
+    if not ns.IsQuestReady(q) then
+      for i = ai or ti, ti - 1 do
+        local st = ns.steps[i]
+        if st.t == "complete" and stepHas(st, q) then return i end
+      end
+    end
+    return ti
+  end
+  -- a follow-up you can take now, whose pickup the route has passed
+  if ai and ai < cur and inChapter(ai) and not ns.QuestHidden(ns.steps[ai], q) then return ai end
+  return nil
+end
+
+local syncQueue = {}
+-- Called from the event handler: quest q was accepted, or turned in (then its follow-ups count).
+function ns.QueueSideTrip(q, turnedIn)
+  q = tonumber(q)
+  if not q then return end
+  if turnedIn then
+    for _, d in ipairs(ns.dependents and ns.dependents[q] or {}) do
+      syncQueue[#syncQueue + 1] = d
+      if ns.side and ns.side[q] then ns.side[d] = true end   -- a follow-up of a side trip joins it
+    end
+  else
+    syncQueue[#syncQueue + 1] = q
+  end
+end
+
+local function saveSide()
+  EarthmothersGuideCharDB = EarthmothersGuideCharDB or {}
+  EarthmothersGuideCharDB.returnIndex = ns.returnIndex
+  EarthmothersGuideCharDB.side = ns.side
+end
+
+function ns.EndSideTrip()
+  ns.returnIndex, ns.side = nil, nil
+  saveSide()
+end
+
+function ns.InSideTrip()
+  return ns.returnIndex ~= nil and (ns.index or 1) < ns.returnIndex
+end
+
+-- Go back for queued out-of-order quests (if any have unfinished steps behind you).
+function ns.ProcessSideTrips()
+  if #syncQueue == 0 then return end
+  local queue = syncQueue
+  syncQueue = {}
+  if not ns.logReady or ns.manualMove then return end
+  local best, bestQ
+  for _, q in ipairs(queue) do
+    local t = ns.SideTripTarget(q)
+    if t and (not best or t < best) then best, bestQ = t, q end
+  end
+  if not best then return end
+  ns.returnIndex = math.max(ns.returnIndex or 0, ns.index or 1)
+  ns.side = ns.side or {}
+  for _, q in ipairs(queue) do if ns.SideTripTarget(q) then ns.side[q] = true end end
+  saveSide()
+  local st = ns.steps[best]
+  if ns.say then
+    ns.say(("%s is out of route order - going back to it, then on to step %d."):format(
+      (st.qn and st.qn[bestQ]) or ("Quest " .. bestQ), ns.returnIndex))
+  end
+  ns.SetIndex(best, false)
+end
+
+-- During a side trip only the side quests' steps count; everything else up to the return
+-- point is already behind you.
+local function sideSkip(i, step)
+  if not ns.returnIndex or i >= ns.returnIndex then return false end
+  for _, q in ipairs(step.q or {}) do if ns.side and ns.side[q] then return false end end
+  return true
 end
 
 function ns.SetIndex(i, manual)
@@ -690,6 +794,7 @@ function ns.SetIndex(i, manual)
   EarthmothersGuideCharDB.guideHash = ns.guideHash
   ns.manualMove = manual
   EarthmothersGuideCharDB.manual = manual and true or nil
+  if manual and ns.returnIndex then ns.EndSideTrip() end   -- you chose a place yourself
   -- remember whether the step was already done when you moved onto it by hand; if it becomes
   -- done later, that is progress and the guide moves on again
   ns.manualStepDone = manual and ns.IsStepDone(ns.steps[i]) or false
@@ -705,7 +810,7 @@ function ns.Advance()
   local moved = false
   while i <= #ns.steps do
     local step = ns.steps[i]
-    if ns.IsFiltered(step) or ns.IsStepDone(step) then
+    if ns.IsFiltered(step) or ns.IsStepDone(step) or sideSkip(i, step) then
       if i == #ns.steps then break end
       i = i + 1
       moved = true
@@ -713,6 +818,8 @@ function ns.Advance()
       break
     end
   end
+  -- back at (or past) the point you left for a side trip: it is over
+  if ns.returnIndex and i >= ns.returnIndex then ns.EndSideTrip() end
   if moved then ns.SetIndex(i) else ns.Fire() end
 end
 
@@ -855,6 +962,7 @@ local function schedule(event)
     -- the step you moved to by hand has just been finished: that is progress too
     local cur = ns.Current()
     if ns.manualMove and cur and not ns.manualStepDone and ns.IsStepDone(cur) then ns.manualMove = false end
+    ns.ProcessSideTrips()
     ns.Refresh()
   end
   if C_Timer and C_Timer.After then C_Timer.After(0.3, run) else run() end
@@ -917,6 +1025,9 @@ function ns.OnEvent(_, event, arg1)
     if EarthmothersGuideCharDB.guideHash ~= ns.guideHash then saved = nil end
     ns.index = (saved and ns.steps[saved]) and saved or nil
     ns.startIndex = EarthmothersGuideCharDB.startIndex
+    if ns.index and EarthmothersGuideCharDB.returnIndex and ns.steps[EarthmothersGuideCharDB.returnIndex] then
+      ns.returnIndex, ns.side = EarthmothersGuideCharDB.returnIndex, EarthmothersGuideCharDB.side or {}
+    end
     return
   end
   if event == "PLAYER_LEVEL_UP" and tonumber(arg1) then ns.levelUp = tonumber(arg1) end
@@ -957,6 +1068,9 @@ function ns.OnEvent(_, event, arg1)
   if event == "QUEST_TURNED_IN" or event == "QUEST_ACCEPTED" or event == "QUEST_REMOVED" or event == "QUEST_LOG_UPDATE" then
     ns.questGen = (ns.questGen or 0) + 1
   end
+  -- quests picked up (or follow-ups unlocked) out of route order: checked on the next refresh
+  if event == "QUEST_ACCEPTED" then ns.QueueSideTrip(arg1, false) end
+  if event == "QUEST_TURNED_IN" then ns.QueueSideTrip(arg1, true) end
   schedule(event)
 end
 

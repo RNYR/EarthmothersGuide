@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.1
+
+- Quests picked up out of route order are handled by themselves: accept a quest whose steps the
+  route has passed (an item-started quest like Chen's Empty Keg, looted late) and the guide goes
+  back to it, shows only that quest and its follow-ups, then returns to where you were. Handing in
+  a quest whose follow-up the route has passed works the same way.
+- "Ready to hand in" only lists finished quests of the batch you are on.
+- A batch step counts only the quests you actually have: "Do these 6 quests" becomes "Do these 2
+  quests" when you carry two of them (quests you never picked up or skipped are not counted).
+- The "Coming up" section is gone.
+- A tidier header: the icon spans the title and chapter lines, which line up; the arrow and its
+  distance have the top-right corner to themselves, ending on the same edge as the step text,
+  which starts a little lower and uses the full width.
+  The gear icon is gone - right-click the panel (or /emg options) for the settings.
+- New "Panel width" setting (260-520 px, or `/emg width`) next to "Panel max height"; the outline
+  preview shows the new size while you change either. The panel is now 350 px wide by default.
+
 ## 1.0.0
 
 First release.

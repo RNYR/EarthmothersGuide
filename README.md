@@ -30,9 +30,9 @@ From a copy of the [source repository](https://github.com/RNYR/EarthmothersGuide
 
 Quests that have turned grey for you are skipped (the game's grey rule; change with `/emg gray`: `grey`, `0` = never, or a number of levels below you). Druid class quests are never skipped. A grey quest that starts a chain stays only while a later part of that chain is still worth doing for you.
 
-A small brown panel shows the current step. It moves on by itself when you accept, finish or hand in the listed quests, learn a form, reach a level or arrive in a zone. **Every quest line has a checkbox: tick it to skip just that quest** (the guide stops waiting for it; untick to put it back, or `/emg unskip` to clear all skips). Note, training and hearthstone steps have a **Done** checkbox instead. Left-drag moves the panel; right-click it, or click the gear, to open the settings.
+A small brown panel shows the current step. It moves on by itself when you accept, finish or hand in the listed quests, learn a form, reach a level or arrive in a zone. **Every quest line has a checkbox: tick it to skip just that quest** (the guide stops waiting for it; untick to put it back, or `/emg unskip` to clear all skips). Note, training and hearthstone steps have a **Done** checkbox instead. Left-drag moves the panel; right-click it to open the settings.
 
-**Several quests at once:** at each quest hub the guide picks up every available quest, then shows the whole batch as one step: "Do these 9 quests in the area". Each quest is a checklist line with its remaining objectives; finished quests get a tick and stay in the list, quests you dropped are left out. The step completes when every quest in it is finished. Pickup steps show what is **Coming up** in the next batch, and **Also carrying** pins any other unfinished quest from the chapter in your log. **Compact quest list** (settings) shows one line per quest, e.g. "Disrupt the Attacks  12/19".
+**Several quests at once:** at each quest hub the guide picks up every available quest, then shows the whole batch as one step: "Do these 9 quests in the area". Each quest is a checklist line with its remaining objectives; finished quests get a tick and stay in the list, quests you dropped are left out. The step completes when every quest in it is finished. **Also carrying** pins any other unfinished quest from the chapter in your log. **Compact quest list** (settings) shows one line per quest, e.g. "Disrupt the Attacks  12/19".
 
 **Replaces Blizzard's quest tracker:** while the guide panel is shown, Blizzard's tracker under the minimap is hidden and the panel takes its place (your full quest log is still on `L`). Untick **Replace Blizzard's quest tracker** in the settings or use `/emg tracker on` to get it back; hiding the guide panel also brings it back. Hiding happens safely in combat (the tracker becomes invisible at once and is fully hidden when combat ends).
 
@@ -40,7 +40,9 @@ A small brown panel shows the current step. It moves on by itself when you accep
 
 **Falling behind:** if a step's quests are 3 or more levels above you, the panel says so.
 
-**Hand-ins:** after a dungeon, quests are handed in inside it first, then at NPCs near it. Turn-ins in faraway cities wait for the next time the route goes there (see **Detour** below), and Moonglade hand-ins happen on your training trips. **Ready to hand in** under the step lists every finished quest in your log with the NPC and zone that takes it, so finished quests waiting elsewhere stay in view.
+**Hand-ins:** after a dungeon, quests are handed in inside it first, then at NPCs near it. Turn-ins in faraway cities wait for the next time the route goes there (see **Detour** below), and Moonglade hand-ins happen on your training trips. **Ready to hand in** under the step lists the finished quests of the batch you are on, with the NPC and zone that takes each.
+
+**Quests picked up out of order:** when you accept a quest whose steps the route has already passed (an item-started quest you loot late, for example), the guide goes back to it by itself, shows only that quest and its follow-ups, and then takes you back to where you were. The same happens when you hand in a quest whose follow-up the route has passed.
 
 **Hearthstone and travel:** the route tells you where to set your hearthstone at each new hub (Bloodhoof Village, the Crossroads, the Sepulcher, Sun Rock Retreat, Freewind Post, Tarren Mill, Grom'gol, Shadowprey Village, Rog'mar, Gadgetzan, Camp Mojache, Revantusk Village, Kargath, Light's Hope Chapel, Everlook); the step completes by itself once the game reports the new hearth. Every move to a new zone is a **Travel** step with how to get there, and it says "Use your hearthstone" whenever your hearth is set where you are going. If a quest waiting in Orgrimmar, Undercity, Thunder Bluff, Mulgore or Brill has waited 4 or more levels, the route adds a **Detour** to hand it in before it loses XP (never across continents mid-trip).
 
@@ -50,13 +52,13 @@ A small brown panel shows the current step. It moves on by itself when you accep
 
 **Quest item buttons:** a quest on the panel that has a usable quest item gets a small button with the item's icon at the end of its row, as in Blizzard's quest tracker; click it to use the item. The buttons only change out of combat (a game rule for secure buttons), so if the panel changes during a fight they catch up when it ends.
 
-**Panel height:** set **Panel max height** in the settings (or `/emg height 150-900`); while you change it, an outline on the panel shows the new maximum. When a step has more than fits, the panel scrolls with the mouse wheel and a thin bar on the right shows where you are; every quest is listed, nothing is cut off.
+**Panel size:** set **Panel width** (260-520 px, or `/emg width`) and **Panel max height** (or `/emg height 150-900`) in the settings; while you change either, an outline on the panel shows the new size. When a step has more than fits, the panel scrolls with the mouse wheel and a thin bar on the right shows where you are; every quest is listed, nothing is cut off.
 
-**Arrow:** an arrowhead in the top-right of the panel points to the current step's NPC or, in a batch, to the nearest quest you have not finished (marked with ">" in the list; the map pin follows it), with the distance underneath (no TomTom needed). It is green when you face the target, yellow to the side and red behind, and says "here" within 8 yards. It works across zones on the same continent; on another continent or inside an instance it turns grey and says "far".
+**Arrow:** an arrowhead in the top-right corner of the panel points to the current step's NPC or, in a batch, to the nearest quest you have not finished (marked with ">" in the list; the map pin follows it), with the distance underneath (no TomTom needed). It is green when you face the target, yellow to the side and red behind, and says "here" within 8 yards. It works across zones on the same continent; on another continent or inside an instance it turns grey and says "far".
 
-**Settings** (gear, right-click, `/emg options`, or Esc > Options > AddOns > Earthmother's Guide):
+**Settings** (right-click the panel, `/emg options`, or Esc > Options > AddOns > Earthmother's Guide):
 - show the panel, arrow, Blizzard map pin, lock position, compact quest list, carried quests, quest item buttons, profession quests, replace Blizzard's quest tracker
-- panel size, panel max height (it scrolls beyond that), and when low quests are skipped
+- panel size, panel width, panel max height (it scrolls beyond that), and when low quests are skipped
 - Find my place, Back one step, Skip this step
 - the route browser: all 12 chapters, each with its level range, % done and a progress bar; pick one to see its zones, its dungeons with level ranges, and every step grouped by zone, with done steps ticked and your current step marked. Click a step to jump there.
 
@@ -73,7 +75,7 @@ A small brown panel shows the current step. It moves on by itself when you accep
 | `/emg resume` | work out your place again from your level and finished quests |
 | `/emg status` | level, finished guide quests, missing druid forms |
 | `/emg gray grey\|0-10` | skip quests once they turn grey (default), never (0), or this many levels below you |
-| `/emg scale 0.6-1.6`, `/emg height 150-900`, `/emg lock`, `/emg unlock` | panel size, maximum height and dragging |
+| `/emg scale 0.6-1.6`, `/emg width 260-520`, `/emg height 150-900`, `/emg lock`, `/emg unlock` | panel size, width, maximum height and dragging |
 | `/emg arrow on\|off` | the guide's own waypoint arrow |
 | `/emg waypoints on\|off` | Blizzard map pin for each step |
 
